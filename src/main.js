@@ -1,6 +1,5 @@
 import { Actor } from 'apify';
 import fs from 'fs';
-import https from 'https';
 import { execSync } from 'child_process';
 
 await Actor.init();
@@ -15,24 +14,27 @@ if (!videoUrl || !audioUrl || !subtitleText) {
     throw new Error('Faltan datos en el input');
 }
 
-// DESCARGAR ARCHIVOS
-const download = (url, path) => new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(path);
-    https.get(url, (res) => {
-        if (res.statusCode !== 200) {
-            reject(`Error descargando: ${url}`);
-            return;
-        }
-        res.pipe(file);
-        file.on('finish', () => file.close(resolve));
-    }).on('error', reject);
-});
+// 🔥 DESCARGA ROBUSTA (IMPORTANTE)
+const download = async (url, path) => {
+    const res = await fetch(url);
 
-console.log("⬇️ Descargando video y audio...");
+    if (!res.ok) {
+        throw new Error(`Error descargando: ${url} - ${res.status}`);
+    }
+
+    const fileStream = fs.createWriteStream(path);
+    await new Promise((resolve, reject) => {
+        res.body.pipe(fileStream);
+        res.body.on("error", reject);
+        fileStream.on("finish", resolve);
+    });
+};
+
+console.log("⬇️ Descargando archivos...");
 await download(videoUrl, 'video.mp4');
 await download(audioUrl, 'audio.mp3');
 
-// OBTENER DURACIÓN DEL VIDEO
+// ⏱ OBTENER DURACIÓN DEL VIDEO
 console.log("⏱ Obteniendo duración...");
 const duration = parseFloat(execSync(
     `ffprobe -v error -show_entries format=duration -of csv=p=0 video.mp4`
@@ -40,7 +42,7 @@ const duration = parseFloat(execSync(
 
 console.log("Duración:", duration);
 
-// GENERAR SUBTÍTULOS AUTOMÁTICOS
+// 📝 GENERAR SUBTÍTULOS (.srt)
 const lines = subtitleText
     .split('\n')
     .map(l => l.trim())
@@ -68,7 +70,7 @@ lines.forEach((line, i) => {
 
 fs.writeFileSync('subs.srt', srt);
 
-// PROCESAR CON FFMPEG
+// 🎬 EJECUTAR FFMPEG
 console.log("⚙️ Ejecutando FFmpeg...");
 
 const cmd = `
@@ -86,7 +88,7 @@ output.mp4
 
 execSync(cmd, { stdio: 'inherit' });
 
-// GUARDAR RESULTADO
+// 📤 GUARDAR RESULTADO
 console.log("📤 Guardando resultado...");
 const output = fs.readFileSync('output.mp4');
 
