@@ -14,27 +14,28 @@ if (!videoUrl || !audioUrl || !subtitleText) {
     throw new Error('Faltan datos en el input');
 }
 
-// 🔥 DESCARGA ROBUSTA (IMPORTANTE)
+// 🔥 DESCARGA FINAL (COMPATIBLE NODE 18 + ANTI 403)
 const download = async (url, path) => {
-    const res = await fetch(url);
+    const res = await fetch(url, {
+        headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "*/*"
+        }
+    });
 
     if (!res.ok) {
         throw new Error(`Error descargando: ${url} - ${res.status}`);
     }
 
-    const fileStream = fs.createWriteStream(path);
-    await new Promise((resolve, reject) => {
-        res.body.pipe(fileStream);
-        res.body.on("error", reject);
-        fileStream.on("finish", resolve);
-    });
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(path, buffer);
 };
 
 console.log("⬇️ Descargando archivos...");
 await download(videoUrl, 'video.mp4');
 await download(audioUrl, 'audio.mp3');
 
-// ⏱ OBTENER DURACIÓN DEL VIDEO
+// ⏱ DURACIÓN DEL VIDEO
 console.log("⏱ Obteniendo duración...");
 const duration = parseFloat(execSync(
     `ffprobe -v error -show_entries format=duration -of csv=p=0 video.mp4`
@@ -42,7 +43,7 @@ const duration = parseFloat(execSync(
 
 console.log("Duración:", duration);
 
-// 📝 GENERAR SUBTÍTULOS (.srt)
+// 📝 CREAR SUBTÍTULOS (.srt)
 const lines = subtitleText
     .split('\n')
     .map(l => l.trim())
@@ -70,7 +71,7 @@ lines.forEach((line, i) => {
 
 fs.writeFileSync('subs.srt', srt);
 
-// 🎬 EJECUTAR FFMPEG
+// 🎬 FFMPEG
 console.log("⚙️ Ejecutando FFmpeg...");
 
 const cmd = `
