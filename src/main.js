@@ -1,64 +1,46 @@
-import fs from 'fs';
-import https from 'https';
-import { execSync } from 'child_process';
 import { Actor } from 'apify';
+import fs from 'fs';
+import fetch from 'node-fetch';
+import { execSync } from 'child_process';
 
-// 🔥 Verificación para asegurar que este código sí corre
-console.log('🔥 CODIGO NUEVO EJECUTANDOSE 🔥');
+await Actor.init();
 
-// 🔗 URL del video
-const url = 'https://api.apify.com/v2/key-value-stores/lH2gvPfXIkqZQpEqC/records/video-f75e06531605bbdc76401cbd19c453af-b0442d.mp4?signature=z88rM9dFKbyB3j1cP4VD';
+const input = await Actor.getInput();
+const { url, texto } = input;
 
-// 📥 función para descargar
-function download(url, path) {
-    return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(path);
+console.log('🔥 CODIGO CON SUBTITULOS DINAMICOS 🔥');
 
-        https.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0'
-            }
-        }, (res) => {
+// Descargar video
+console.log('Descargando...');
+const response = await fetch(url);
 
-            console.log('STATUS:', res.statusCode);
-
-            if (res.statusCode !== 200 && res.statusCode !== 206) {
-                reject(new Error('Status: ' + res.statusCode));
-                return;
-            }
-
-            res.pipe(file);
-
-            file.on('finish', () => {
-                file.close(resolve);
-            });
-
-        }).on('error', reject);
-    });
+if (!response.ok) {
+    throw new Error(`Error descargando video: ${response.status}`);
 }
 
-// 🚀 ejecución principal
-(async () => {
-    await Actor.init();
+const buffer = await response.arrayBuffer();
+fs.writeFileSync('input.mp4', Buffer.from(buffer));
 
-    try {
-        console.log('Descargando...');
-        await download(url, 'input.mp4');
+console.log('Procesando con subtítulos...');
 
-        console.log('Procesando...');
-        execSync('ffmpeg -y -i input.mp4 -c copy output.mp4');
+// Escapar caracteres peligrosos para FFmpeg
+const safeText = texto
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/,/g, '\\,');
 
-        console.log('Guardando en Apify...');
+// FFmpeg con texto dinámico
+execSync(`
+ffmpeg -i input.mp4 -vf "drawtext=text='${safeText}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=h-100" -codec:a copy output.mp4
+`, { stdio: 'inherit' });
 
-        await Actor.setValue('output-video', fs.readFileSync('output.mp4'), {
-            contentType: 'video/mp4'
-        });
+console.log('Guardando en Apify...');
 
-        console.log('✅ TODO LISTO');
+// Subir resultado
+await Actor.setValue('OUTPUT_VIDEO', fs.readFileSync('output.mp4'), {
+    contentType: 'video/mp4',
+});
 
-    } catch (err) {
-        console.error('❌ Error:', err.message);
-    }
+console.log('✅ VIDEO CON SUBTITULOS LISTO');
 
-    await Actor.exit();
-})();
+await Actor.exit();
