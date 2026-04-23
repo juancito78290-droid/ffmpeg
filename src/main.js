@@ -4,83 +4,56 @@ import fs from 'fs';
 
 await Actor.init();
 
-// ================= INPUT =================
-const input = await Actor.getInput() || {};
+// ====== INPUT ======
+const input = await Actor.getInput();
 
-const videoUrl = input.video_url;
-const audioUrl = input.audio_url;
-const subtitles = input.subtitles;
+const videoUrl = input.videoUrl;
+const audioUrl = input.audioUrl;
+const subtitles = input.subtitles || [
+    { start: "00:00:00,000", end: "00:00:03,000", text: "Hola mundo" }
+];
 
-if (!videoUrl || !audioUrl || !Array.isArray(subtitles) || subtitles.length === 0) {
-    throw new Error('Input inválido');
-}
-
-// ================= DESCARGA =================
-async function downloadFile(url, path) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Error descargando ${url}`);
-    const buffer = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(path, buffer);
-}
-
+// ====== DESCARGAR VIDEO ======
 console.log('Descargando video...');
-await downloadFile(videoUrl, 'video.mp4');
+execSync(`curl -L "${videoUrl}" -o video.mp4`, { stdio: 'inherit' });
 
+// ====== DESCARGAR AUDIO ======
 console.log('Descargando audio...');
-await downloadFile(audioUrl, 'audio.mp3');
+execSync(`curl -L "${audioUrl}" -o audio.mp3`, { stdio: 'inherit' });
 
-// ================= CREAR SRT =================
-function formatTime(sec) {
-    const hrs = String(Math.floor(sec / 3600)).padStart(2, '0');
-    const min = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-    const s = String(Math.floor(sec % 60)).padStart(2, '0');
-    const ms = String(Math.floor((sec % 1) * 1000)).padStart(3, '0');
-    return `${hrs}:${min}:${s},${ms}`;
-}
+// ====== CREAR SRT ======
+console.log('Creando subtítulos...');
 
-let srt = '';
-
+let srtContent = '';
 subtitles.forEach((sub, i) => {
-    srt += `${i + 1}\n`;
-    srt += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-    srt += `${sub.text}\n\n`;
+    srtContent += `${i + 1}\n${sub.start} --> ${sub.end}\n${sub.text}\n\n`;
 });
 
-fs.writeFileSync('subtitles.srt', srt);
+fs.writeFileSync('subs.srt', srtContent);
 
-// ================= FFMPEG =================
+// ====== RENDER ======
 console.log('Renderizando video...');
 
-// IMPORTANTE: escapado correcto
-const cmd = `
+execSync(`
 ffmpeg -y \
 -i video.mp4 \
 -i audio.mp3 \
--vf "subtitles=subtitles.srt:charenc=UTF-8:force_style='FontName=DejaVu Sans,FontSize=24'" \
+-vf subtitles=subs.srt \
 -map 0:v:0 \
 -map 1:a:0 \
 -c:v libx264 \
+-preset veryfast \
+-crf 28 \
 -c:a aac \
 -shortest \
 output.mp4
-`;
+`, { stdio: 'inherit' });
 
-execSync(cmd, { stdio: 'inherit' });
+// ====== OUTPUT ======
+console.log('Subiendo resultado...');
 
-// ================= GUARDAR =================
-await Actor.setValue('output.mp4', fs.readFileSync('output.mp4'), {
-    contentType: 'video/mp4',
+await Actor.setValue('OUTPUT', fs.readFileSync('output.mp4'), {
+    contentType: 'video/mp4'
 });
-
-const storeId = process.env.APIFY_DEFAULT_KEY_VALUE_STORE_ID;
-
-const finalUrl = `https://api.apify.com/v2/key-value-stores/${storeId}/records/output.mp4`;
-
-await Actor.pushData({
-    status: 'ok',
-    video_url: finalUrl
-});
-
-console.log('VIDEO FINAL:', finalUrl);
 
 await Actor.exit();
