@@ -1,102 +1,82 @@
 import { Actor } from 'apify';
 import fs from 'fs';
-import axios from 'axios';
 import { execSync } from 'child_process';
+import fetch from 'node-fetch';
 
 await Actor.init();
 
+// 1. Leer input correctamente
 const input = await Actor.getInput();
-const { videoUrl, audioUrl, subtitles } = input;
 
-if (!videoUrl || !audioUrl || !subtitles?.length) {
+if (!input || !input.video_url || !input.audio_url || !input.subtitles) {
     throw new Error('Faltan datos en el input');
 }
 
-// 📥 DESCARGAR VIDEO
-console.log('⬇️ Descargando video...');
-const videoRes = await axios({ url: videoUrl, method: 'GET', responseType: 'stream' });
-await new Promise((res, rej) => {
-    const s = fs.createWriteStream('video.mp4');
-    videoRes.data.pipe(s);
-    s.on('finish', res);
-    s.on('error', rej);
-});
+const { video_url, audio_url, subtitles } = input;
 
-// 📥 DESCARGAR AUDIO
-console.log('🎵 Descargando audio...');
-const audioRes = await axios({ url: audioUrl, method: 'GET', responseType: 'stream' });
-await new Promise((res, rej) => {
-    const s = fs.createWriteStream('audio.mp3');
-    audioRes.data.pipe(s);
-    s.on('finish', res);
-    s.on('error', rej);
-});
+// 2. Descargar video
+console.log('Descargando video...');
+const videoRes = await fetch(video_url);
+const videoBuffer = await videoRes.buffer();
+fs.writeFileSync('video.mp4', videoBuffer);
 
-// 🔄 NORMALIZAR VIDEO (evita errores raros)
-console.log('🔄 Normalizando video...');
-execSync(`ffmpeg -y -i video.mp4 -vf scale=480:854 -c:v libx264 -preset veryfast -crf 28 -an video_clean.mp4`);
+// 3. Descargar audio
+console.log('Descargando audio...');
+const audioRes = await fetch(audio_url);
+const audioBuffer = await audioRes.buffer();
+fs.writeFileSync('audio.mp3', audioBuffer);
 
-// 🔄 NORMALIZAR AUDIO
-console.log('🔄 Normalizando audio...');
-execSync(`ffmpeg -y -i audio.mp3 -ar 44100 -ac 2 -b:a 128k audio_clean.mp3`);
+// 4. Crear archivo SRT
+console.log('Creando subtítulos...');
 
-// ⏱ DURACIÓN REAL
-const duration = parseFloat(
-    execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 video_clean.mp4`)
-        .toString()
-        .trim()
-);
-
-// 📝 CREAR SRT
-console.log('📝 Generando subtítulos...');
+function formatTime(seconds) {
+    const date = new Date(seconds * 1000);
+    return date.toISOString().substr(11, 12).replace('.', ',');
+}
 
 let srt = '';
-const segment = duration / subtitles.length;
 
-const formatTime = (sec) => {
-    const h = String(Math.floor(sec / 3600)).padStart(2, '0');
-    const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-    const s = String(Math.floor(sec % 60)).padStart(2, '0');
-    return `${h}:${m}:${s},000`;
-};
-
-subtitles.forEach((text, i) => {
-    const start = i * segment;
-    const end = (i + 1) * segment;
-
-    srt += `${i + 1}
-${formatTime(start)} --> ${formatTime(end)}
-${text}
-
-`;
+subtitles.forEach((sub, i) => {
+    srt += `${i + 1}\n`;
+    srt += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+    srt += `${sub.text}\n\n`;
 });
 
 fs.writeFileSync('subs.srt', srt);
 
-// ✂️ AJUSTAR AUDIO AL VIDEO
-execSync(`ffmpeg -y -i audio_clean.mp3 -t ${duration} -c copy audio_final.mp3`);
-
-// 🎬 RENDER FINAL
-console.log('⚙️ Render final...');
+// 5. Render final (video + audio + subtítulos)
+console.log('Renderizando...');
 
 execSync(`
-ffmpeg -y -i video_clean.mp4 -i audio_final.mp3 \
--vf "subtitles=subs.srt:force_style='FontName=Arial,FontSize=30,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=1'" \
--map 0:v -map 1:a \
--c:v libx264 -preset veryfast -crf 27 \
+ffmpeg -y \
+-i video.mp4 \
+-i audio.mp3 \
+-vf "subtitles=subs.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=1'" \
+-c:v libx264 -preset veryfast -crf 28 \
 -c:a aac -b:a 128k \
--shortest output.mp4
-`);
+-shortest \
+output.mp4
+`, { stdio: 'inherit' });
 
-// 📤 SUBIR OUTPUT
-console.log('📤 Subiendo...');
+// 6. Subir resultado a Key-Value Store
+console.log('Subiendo resultado...');
 
 const buffer = fs.readFileSync('output.mp4');
 
-await Actor.setValue('OUTPUT', buffer, {
+await Actor.setValue('output.mp4', buffer, {
     contentType: 'video/mp4'
 });
 
-console.log('✅ LISTO → OUTPUT (link disponible)');
+// 7. Generar link directo
+const storeId = process.env.APIFY_DEFAULT_KEY_VALUE_STORE_ID;
+
+const url = `https://api.apify.com/v2/key-value-stores/${storeId}/records/output.mp4`;
+
+console.log('VIDEO FINAL:', url);
+
+// 8. Guardar en dataset (para verlo fácil)
+await Actor.pushData({
+    video_url: url
+});
 
 await Actor.exit();
