@@ -7,16 +7,16 @@ import { execSync } from 'child_process';
 await Actor.init();
 
 const input = await Actor.getInput();
-const { videoUrl, audioUrl } = input;
+const { videoUrl, audioUrl, apiKey: inputKey } = input;
+
+const apiKey = process.env.ASSEMBLYAI_API_KEY || inputKey;
 
 if (!videoUrl || !audioUrl) {
     throw new Error('Faltan videoUrl o audioUrl');
 }
 
-const apiKey = process.env.ASSEMBLYAI_API_KEY;
-
 if (!apiKey) {
-    throw new Error('Falta ASSEMBLYAI_API_KEY en variables de entorno');
+    throw new Error('Falta API key de AssemblyAI');
 }
 
 // -------- DESCARGA --------
@@ -29,7 +29,6 @@ function download(url, path) {
                 reject(new Error(`Error descarga: ${res.statusCode}`));
                 return;
             }
-
             res.pipe(file);
             file.on('finish', () => file.close(resolve));
         }).on('error', reject);
@@ -38,7 +37,6 @@ function download(url, path) {
 
 // -------- TRANSCRIPCIÓN --------
 async function transcribeAssembly() {
-
     console.log('Subiendo audio...');
 
     const upload = await axios({
@@ -59,9 +57,7 @@ async function transcribeAssembly() {
             punctuate: true,
             format_text: true
         },
-        {
-            headers: { authorization: apiKey }
-        }
+        { headers: { authorization: apiKey } }
     );
 
     const id = transcript.data.id;
@@ -76,7 +72,7 @@ async function transcribeAssembly() {
 
         if (polling.data.status === 'completed') {
             if (!polling.data.words) {
-                throw new Error('No se recibieron palabras de AssemblyAI');
+                throw new Error('No se recibieron palabras');
             }
             return polling.data.words;
         }
@@ -99,7 +95,6 @@ function secondsToASS(sec) {
 
 // -------- SUBTÍTULOS --------
 function createASS(words) {
-
     let content = `[Script Info]
 ScriptType: v4.00+
 
@@ -141,7 +136,6 @@ Format: Start, End, Style, Text
 // -------- MAIN --------
 (async () => {
     try {
-
         console.log('Descargando video...');
         await download(videoUrl, 'video.mp4');
 
