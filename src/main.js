@@ -1,50 +1,83 @@
-import { execSync } from 'child_process';
-import fs from 'fs';
 import { Actor } from 'apify';
+import fs from 'fs';
+import https from 'https';
+import { execSync } from 'child_process';
 
 await Actor.init();
 
 const input = await Actor.getInput();
-const { video_url, audio_url, subtitles } = input;
 
-if (!video_url || !audio_url || !subtitles) {
-    throw new Error('Falta video_url, audio_url o subtitles');
+const videoUrl = input.videoUrl;
+const audioUrl = input.audioUrl;
+const text = input.text || 'SIN TEXTO';
+
+// Validación
+if (!videoUrl || !audioUrl) {
+    throw new Error('Faltan videoUrl o audioUrl');
 }
 
-console.log('Descargando video...');
-execSync(`wget -O video.mp4 "${video_url}"`);
+// Escapar texto para ffmpeg (MUY IMPORTANTE)
+function escapeText(t) {
+    return t
+        .replace(/:/g, '\\:')
+        .replace(/'/g, "\\\\'")
+        .replace(/,/g, '\\,');
+}
 
-console.log('Descargando audio...');
-execSync(`wget -O audio.mp3 "${audio_url}"`);
+// Descargar archivo
+function download(url, path) {
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(path);
 
-console.log('Creando filtros drawtext...');
+        https.get(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        }, (res) => {
 
-// 🔥 Crear múltiples drawtext (uno por subtítulo)
-let filters = subtitles.map(sub => {
-    const safeText = sub.text.replace(/:/g, '\\:').replace(/'/g, "\\'");
+            console.log('STATUS:', res.statusCode);
 
-    return `drawtext=text='${safeText}':fontcolor=white:fontsize=48:borderw=3:bordercolor=black:x=(w-text_w)/2:y=h-200:enable='between(t,${sub.start},${sub.end})'`;
-}).join(',');
+            if (![200, 206].includes(res.statusCode)) {
+                reject(new Error('Status: ' + res.statusCode));
+                return;
+            }
 
-console.log('Renderizando video...');
+            res.pipe(file);
 
-execSync(`
-ffmpeg -y \
--i video.mp4 \
--i audio.mp3 \
--vf "${filters}" \
--map 0:v:0 -map 1:a:0 \
--c:v libx264 -preset veryfast \
--c:a aac \
--shortest output.mp4
-`);
+            file.on('finish', () => {
+                file.close(resolve);
+            });
 
-console.log('Subiendo resultado...');
+        }).on('error', reject);
+    });
+}
 
-await Actor.setValue('output.mp4', fs.readFileSync('output.mp4'), {
-    contentType: 'video/mp4',
-});
+(async () => {
+    try {
+        console.log('Descargando video...');
+        await download(videoUrl, 'video.mp4');
 
-console.log('✅ VIDEO FINAL CON TEXTO (GARANTIZADO)');
+        console.log('Descargando audio...');
+        await download(audioUrl, 'audio.mp3');
 
-await Actor.exit();
+        console.log('Procesando con subtítulos...');
+
+        const safeText = escapeText(text);
+
+        const command = `ffmpeg -y -i video.mp4 -i audio.mp3 \
+-vf "drawtext=fontfile=/usr/share/fonts/TTF/DejaVuSans.ttf:text='${safeText}':x=(w-text_w)/2:y=h-100:fontsize=40:fontcolor=white:borderw=2:bordercolor=black:box=1:boxcolor=black@0.4" \
+-shortest output.mp4`;
+
+        execSync(command, { stdio: 'inherit' });
+
+        console.log('✅ VIDEO CON TEXTO LISTO');
+
+        await Actor.pushData({
+            videoUrl,
+            audioUrl,
+            text,
+            output: 'output.mp4'
+        });
+
+    } catch (err) {
+        console.error('❌ ERROR:', err);
+    }
+})();
