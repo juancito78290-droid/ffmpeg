@@ -1,6 +1,6 @@
 import { Actor } from 'apify';
-import fs from 'fs';
 import { execSync } from 'child_process';
+import fs from 'fs';
 
 await Actor.init();
 
@@ -10,105 +10,71 @@ const items = input.items || [];
 for (let i = 0; i < items.length; i++) {
     const { videoUrl, audioUrl, text } = items[i];
 
-    console.log(`🎬 Procesando item ${i}`);
+    console.log(`🎬 Procesando ${i}`);
 
-    const videoFile = `video_${i}.mp4`;
-    const audioFile = `audio_${i}.mp3`;
-    const fixedAudio = `audio_fixed_${i}.mp3`;
-    const subsFile = `subs_${i}.ass`;
-    const outputFile = `output_${i}.mp4`;
+    const video = `video_${i}.mp4`;
+    const audio = `audio_${i}.mp3`;
+    const subs = `subs_${i}.ass`;
+    const output = `output_${i}.mp4`;
 
-    // 📥 DESCARGAR (IMPORTANTE: -L para redirects como tu link)
-    execSync(`curl -L --fail "${videoUrl}" -o ${videoFile}`);
-    execSync(`curl -L --fail "${audioUrl}" -o ${audioFile}`);
+    // Descargar archivos (rápido)
+    execSync(`curl -L "${videoUrl}" -o ${video}`);
+    execSync(`curl -L "${audioUrl}" -o ${audio}`);
 
-    // 🔧 REPARAR AUDIO (CLAVE PARA TU LINK)
-    execSync(`
-        ffmpeg -y \
-        -fflags +genpts+discardcorrupt \
-        -i ${audioFile} \
-        -vn \
-        -acodec libmp3lame \
-        -ar 44100 \
-        -ac 2 \
-        -b:a 128k \
-        ${fixedAudio}
-    `);
+    // Crear subtítulos simples (ULTRA LIGHT)
+    const words = text.split(' ');
+    const chunkSize = 4;
 
-    // ⏱ DURACIÓN REAL DEL AUDIO
-    const duration = parseFloat(
-        execSync(`ffprobe -v error -show_entries format=duration -of csv=p=0 ${fixedAudio}`)
-            .toString()
-            .trim()
-    );
+    let chunks = [];
+    for (let j = 0; j < words.length; j += chunkSize) {
+        chunks.push(words.slice(j, j + chunkSize).join(' '));
+    }
 
-    // ✂️ DIVIDIR TEXTO (más natural)
-    const sentences = text.split(/(?<=\.)\s+/); // divide por frases
-    const chunks = sentences.length > 1 ? sentences : [
-        text.slice(0, text.length / 2),
-        text.slice(text.length / 2)
-    ];
+    const duration = 15; // fallback si no detectamos
+    const chunkDuration = duration / chunks.length;
 
-    // 🎬 SUBTÍTULOS PRO
     let ass = `[Script Info]
 ScriptType: v4.00+
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment
-Style: Default,Arial,48,&H00FFFFFF,&H00000000,1,2,0,2
+Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,2,0,5,10,10,10,1
 
 [Events]
-Format: Start, End, Style, Text
 `;
 
-    const partDuration = duration / chunks.length;
+    let currentTime = 0;
 
-    chunks.forEach((chunk, index) => {
-        const start = index * partDuration;
-        const end = (index + 1) * partDuration;
+    chunks.forEach((chunk) => {
+        const start = new Date(currentTime * 1000).toISOString().substr(11, 8) + ".00";
+        currentTime += chunkDuration;
+        const end = new Date(currentTime * 1000).toISOString().substr(11, 8) + ".00";
 
-        const format = (t) => {
-            const h = Math.floor(t / 3600);
-            const m = Math.floor((t % 3600) / 60);
-            const s = (t % 60).toFixed(2).padStart(5, '0');
-            return `${h}:${m}:${s}`;
-        };
-
-        ass += `Dialogue: ${format(start)},${format(end)},Default,{\\b1}${chunk}\n`;
+        ass += `Dialogue: 0,${start},${end},Default,,0,0,0,,${chunk}\n`;
     });
 
-    fs.writeFileSync(subsFile, ass);
+    fs.writeFileSync(subs, ass);
 
-    // 🎥 FFmpeg FINAL (ULTRA ESTABLE)
+    // 🎥 FFmpeg ULTRA FAST
     execSync(`
         ffmpeg -y \
-        -i ${videoFile} \
-        -i ${fixedAudio} \
-        -vf "ass=${subsFile}" \
-        -map 0:v:0 \
-        -map 1:a:0 \
-        -c:v libx264 -preset veryfast -crf 28 \
-        -c:a aac -b:a 128k \
+        -i ${video} \
+        -i ${audio} \
+        -vf "ass=${subs}" \
+        -map 0:v:0 -map 1:a:0 \
+        -c:v libx264 -preset ultrafast -crf 30 \
+        -c:a aac -b:a 96k \
         -shortest \
-        ${outputFile}
+        ${output}
     `);
 
-    // ☁️ SUBIR VIDEO
-    const { url } = await Actor.uploadFile(outputFile, {
-        contentType: 'video/mp4',
+    // Guardar resultado
+    const fileBuffer = fs.readFileSync(output);
+
+    await Actor.setValue(`video_${i}.mp4`, fileBuffer, {
+        contentType: 'video/mp4'
     });
 
-    console.log(`✅ Video listo: ${url}`);
-
-    // 📦 DATASET
-    await Actor.pushData({
-        videoUrl: url,
-        inputVideo: videoUrl,
-        inputAudio: audioUrl,
-    });
-
-    // 💾 KEY VALUE
-    await Actor.setValue(`VIDEO_${i}`, url);
+    console.log(`✅ Listo ${i}`);
 }
 
 await Actor.exit();
