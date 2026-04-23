@@ -31,7 +31,7 @@ for (let j = 0; j < words.length; j += chunkSize) {
     parts.push(words.slice(j, j + chunkSize).join(" "));  
 }  
 
-// 🔥 ASS SIN BORDE NI FONDO (AMARILLO + MÁS GRUESO + MÁS ARRIBA)
+// 🔥 ASS SIN BORDE NI FONDO (SOLO CAMBIO: TAMAÑO MÁS GRANDE)
 let ass = `[Script Info]
 
 ScriptType: v4.00+
@@ -40,7 +40,7 @@ PlayResY: 854
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,Arial Bold,48,&H0000FFFF,&H00000000,&H00000000,1,0,0,2,20,20,120
+Style: Default,Arial Bold,64,&H0000FFFF,&H00000000,&H00000000,1,0,0,2,20,20,120
 
 [Events]
 Format: Start,End,Style,Text
