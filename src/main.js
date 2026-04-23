@@ -4,48 +4,70 @@ import fs from 'fs';
 
 await Actor.init();
 
-// Leer input
-const input = await Actor.getInput();
+// ================= INPUT =================
+const input = await Actor.getInput() || {};
 
-const { video_url, audio_url, subtitles } = input;
+const videoUrl = input.video_url;
+const audioUrl = input.audio_url;
+const subtitles = input.subtitles;
 
 // Validación
-if (!video_url || !audio_url || !subtitles) {
-    throw new Error('Faltan datos en el input');
+if (!videoUrl || !audioUrl || !Array.isArray(subtitles) || subtitles.length === 0) {
+    throw new Error('Input inválido: se requiere video_url, audio_url y subtitles[]');
 }
 
-// Descargar video
-const videoRes = await fetch(video_url);
-const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
-fs.writeFileSync('video.mp4', videoBuffer);
+// ================= DESCARGAS =================
+async function downloadFile(url, path) {
+    const res = await fetch(url);
 
-// Descargar audio
-const audioRes = await fetch(audio_url);
-const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
-fs.writeFileSync('audio.mp3', audioBuffer);
+    if (!res.ok) {
+        throw new Error(`Error descargando: ${url}`);
+    }
 
-// Crear archivo SRT
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(path, buffer);
+}
+
+console.log('Descargando video...');
+await downloadFile(videoUrl, 'video.mp4');
+
+console.log('Descargando audio...');
+await downloadFile(audioUrl, 'audio.mp3');
+
+// ================= SRT =================
 function formatTime(sec) {
     const date = new Date(sec * 1000);
-    return date.toISOString().substr(11, 12).replace('.', ',');
+    return date.toISOString().substring(11, 23).replace('.', ',');
 }
 
-let srt = '';
+let srtContent = '';
 
 subtitles.forEach((sub, i) => {
-    srt += `${i + 1}\n`;
-    srt += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-    srt += `${sub.text}\n\n`;
+    if (
+        typeof sub.start !== 'number' ||
+        typeof sub.end !== 'number' ||
+        typeof sub.text !== 'string'
+    ) return;
+
+    srtContent += `${i + 1}\n`;
+    srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+    srtContent += `${sub.text}\n\n`;
 });
 
-fs.writeFileSync('subtitles.srt', srt);
+if (!srtContent) {
+    throw new Error('Subtítulos inválidos');
+}
 
-// Unir video + audio + subtítulos (hardcoded)
+fs.writeFileSync('subtitles.srt', srtContent);
+
+// ================= FFMPEG =================
+console.log('Renderizando video...');
+
 execSync(`
 ffmpeg -y \
 -i video.mp4 \
 -i audio.mp3 \
--vf "subtitles=subtitles.srt:force_style='FontSize=24,PrimaryColour=&Hffffff&,OutlineColour=&H000000&,BorderStyle=1,Outline=2'" \
+-vf "subtitles=subtitles.srt:force_style='FontName=Arial,FontSize=28,PrimaryColour=&Hffffff&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=1'" \
 -map 0:v:0 \
 -map 1:a:0 \
 -c:v libx264 \
@@ -56,19 +78,21 @@ ffmpeg -y \
 output.mp4
 `, { stdio: 'inherit' });
 
-// Subir resultado
+// ================= GUARDAR =================
 await Actor.setValue('output.mp4', fs.readFileSync('output.mp4'), {
     contentType: 'video/mp4',
 });
 
-// Guardar link en dataset
-const store = await Actor.openKeyValueStore();
-const record = await store.getRecord('output.mp4');
+// ================= LINK FINAL =================
+const storeId = process.env.APIFY_DEFAULT_KEY_VALUE_STORE_ID;
+
+const finalUrl = `https://api.apify.com/v2/key-value-stores/${storeId}/records/output.mp4`;
 
 await Actor.pushData({
-    video_url: record.url
+    status: 'ok',
+    video_url: finalUrl
 });
 
-console.log('LISTO:', record.url);
+console.log('VIDEO FINAL:', finalUrl);
 
 await Actor.exit();
