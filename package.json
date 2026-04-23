@@ -1,8 +1,9 @@
 {
-  "name": "my-actor",
+  "name": "video-subtitles",
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "apify": "^3.0.0"
+    "apify": "^3.0.0",
+    "axios": "^1.6.0"
   }
 }
