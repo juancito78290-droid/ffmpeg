@@ -9,22 +9,24 @@ const input = await Actor.getInput();
 
 const videoUrl = input.videoUrl;
 const audioUrl = input.audioUrl;
-const text = input.text || 'SIN TEXTO';
+const text = input.text || 'TEST';
 
 // Validación
 if (!videoUrl || !audioUrl) {
     throw new Error('Faltan videoUrl o audioUrl');
 }
 
-// Escapar texto para ffmpeg (MUY IMPORTANTE)
+// 🔥 ESCAPAR TEXTO (clave para que ffmpeg no falle)
 function escapeText(t) {
     return t
-        .replace(/:/g, '\\:')
+        .replace(/\\/g, '\\\\')
         .replace(/'/g, "\\\\'")
-        .replace(/,/g, '\\,');
+        .replace(/:/g, '\\:')
+        .replace(/,/g, '\\,')
+        .replace(/\n/g, ' ');
 }
 
-// Descargar archivo
+// 📥 Descargar archivos
 function download(url, path) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(path);
@@ -58,13 +60,14 @@ function download(url, path) {
         console.log('Descargando audio...');
         await download(audioUrl, 'audio.mp3');
 
-        console.log('Procesando con subtítulos...');
-
         const safeText = escapeText(text);
 
-        const command = `ffmpeg -y -i video.mp4 -i audio.mp3 \
--vf "drawtext=fontfile=/usr/share/fonts/TTF/DejaVuSans.ttf:text='${safeText}':x=(w-text_w)/2:y=h-100:fontsize=40:fontcolor=white:borderw=2:bordercolor=black:box=1:boxcolor=black@0.4" \
--shortest output.mp4`;
+        console.log('Procesando con ffmpeg...');
+
+        // 🔥 RUTA DE FUENTE CORRECTA (ALPINE)
+        const fontPath = '/usr/share/fonts/TTF/DejaVuSans.ttf';
+
+        const command = `ffmpeg -y -i video.mp4 -i audio.mp3 -vf "drawtext=fontfile=${fontPath}:text='${safeText}':x=(w-text_w)/2:y=h-100:fontsize=40:fontcolor=white:borderw=2:bordercolor=black:box=1:boxcolor=black@0.4" -shortest output.mp4`;
 
         execSync(command, { stdio: 'inherit' });
 
@@ -77,7 +80,11 @@ function download(url, path) {
             output: 'output.mp4'
         });
 
+        // 🔥 MUY IMPORTANTE (evita que siga cobrando)
+        await Actor.exit();
+
     } catch (err) {
         console.error('❌ ERROR:', err);
+        await Actor.exit();
     }
 })();
