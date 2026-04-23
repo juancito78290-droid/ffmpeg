@@ -2,19 +2,19 @@ FROM apify/actor-node:18
 
 USER root
 
-# Instalar ffmpeg
-RUN apk add --no-cache ffmpeg
+# ✅ ffmpeg + fuentes + fontconfig
+RUN apk add --no-cache ffmpeg fontconfig ttf-dejavu
 
 # Copiar archivos
 COPY . ./
 
-# Dar permisos correctos
+# Permisos
 RUN chown -R myuser:myuser /usr/src/app
 
-# Instalar dependencias como root
+# Instalar deps
 RUN npm install
 
-# Volver a usuario seguro
+# Usuario seguro
 USER myuser
 
 CMD ["node", "src/main.js"]
