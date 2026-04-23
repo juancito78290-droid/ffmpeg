@@ -1,30 +1,14 @@
 import { Actor } from 'apify';
-import fs from 'fs';
 import { execSync } from 'child_process';
+import fs from 'fs';
 
 await Actor.init();
 
 const input = await Actor.getInput();
 const items = input.items || [];
 
-function downloadFile(url, path) {
-    execSync(`curl -L "${url}" -o ${path}`);
-}
-
-function formatTime(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = (seconds % 60).toFixed(2);
-    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}`;
-}
-
-function splitText(text) {
-    return text
-        .replace(/\n/g, ' ')
-        .split(/\.|,|\n/)
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
-}
+const store = await Actor.openKeyValueStore();
+const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
     const { videoUrl, audioUrl, text } = items[i];
@@ -32,61 +16,82 @@ for (let i = 0; i < items.length; i++) {
     console.log(`🎬 Procesando item ${i}`);
 
     // Descargar archivos
-    downloadFile(videoUrl, `video_${i}.mp4`);
-    downloadFile(audioUrl, `audio_${i}.mp3`);
+    execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`);
+    execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`);
 
     // Normalizar audio
     execSync(`ffmpeg -y -i audio_${i}.mp3 -ar 44100 -ac 2 audio_fixed_${i}.mp3`);
 
-    // Dividir texto
-    const parts = splitText(text);
+    // 🔥 dividir texto dinámico
+    const words = text.split(" ");
+    const chunkSize = Math.ceil(words.length / 5);
+    const parts = [];
+
+    for (let j = 0; j < words.length; j += chunkSize) {
+        parts.push(words.slice(j, j + chunkSize).join(" "));
+    }
+
+    // 🔥 ASS SIN BORDE NI FONDO
+    let ass = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 480
+PlayResY: 854
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
+Style: Default,Arial,42,&H00FFFF00,&H00000000,&H00000000,1,0,0,2,20,20,40
+
+[Events]
+Format: Start,End,Style,Text
+`;
 
     const totalDuration = 15;
     const partDuration = totalDuration / parts.length;
 
-    // Crear ASS con estilo AMARILLO centrado abajo
-    let ass = `[Script Info]
-ScriptType: v4.00+
+    function formatTime(sec) {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = (sec % 60).toFixed(2);
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(5,'0')}`;
+    }
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+    parts.forEach((p, idx) => {
+        const start = idx * partDuration;
+        const end = start + partDuration;
 
-Style: Default,Arial,56,&H0000FFFF,&H00000000,1,2,0,2,30,30,40
-
-[Events]
-Format: Layer, Start, End, Style, Text
-`;
-
-    parts.forEach((line, index) => {
-        const start = formatTime(index * partDuration);
-        const end = formatTime((index + 1) * partDuration);
-
-        ass += `Dialogue: 0,${start},${end},Default,,0,0,0,,${line}\n`;
+        ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,${p}\n`;
     });
 
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
-    // Crear video final
+    // 🎬 render final
     execSync(`
-ffmpeg -y \
--i video_${i}.mp4 \
--i audio_fixed_${i}.mp3 \
--vf "scale=480:854,ass=subs_${i}.ass" \
--map 0:v -map 1:a \
--c:v libx264 -preset ultrafast -crf 28 \
--c:a aac -b:a 96k \
--shortest \
-output_${i}.mp4
-`);
+        ffmpeg -y \
+        -i video_${i}.mp4 \
+        -i audio_fixed_${i}.mp3 \
+        -vf "scale=480:854,ass=subs_${i}.ass" \
+        -t 15 \
+        -map 0:v -map 1:a \
+        -c:v libx264 -preset veryfast -crf 28 \
+        -c:a aac -b:a 96k \
+        output_${i}.mp4
+    `);
 
-    // Subir a Apify storage
+    // Guardar
     const buffer = fs.readFileSync(`output_${i}.mp4`);
+    const key = `output_${i}.mp4`;
 
-    const { url } = await Actor.setValue(`output_${i}.mp4`, buffer, {
-        contentType: 'video/mp4',
+    await Actor.setValue(key, buffer, {
+        contentType: 'video/mp4'
     });
 
-    console.log(`✅ VIDEO LISTO: ${url}`);
+    const url = `https://api.apify.com/v2/key-value-stores/${storeId}/records/${key}`;
+
+    console.log("✅ VIDEO LISTO:", url);
+
+    await Actor.pushData({
+        videoUrl: url
+    });
 }
 
 await Actor.exit();
