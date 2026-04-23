@@ -31,7 +31,7 @@ for (let j = 0; j < words.length; j += chunkSize) {
 parts.push(words.slice(j, j + chunkSize).join(" "));
 }
 
-// 🔥 ASS MODIFICADO
+// 🔥 ASS CON CAMBIOS
 let ass = `[Script Info]
 
 ScriptType: v4.00+
@@ -46,7 +46,7 @@ Style: Default,Montserrat ExtraBold,72,&H0000FFFF,&H00000000,&H00000000,3,0,0,2,
 Format: Start,End,Style,Text
 `;
 
-const partDuration = 1.5;
+const partDuration = 3;
 
 function formatTime(sec) {
 const h = Math.floor(sec / 3600);
