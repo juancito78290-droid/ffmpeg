@@ -3,17 +3,16 @@ import { Actor } from "apify";
 
 await Actor.init();
 
-const input = await Actor.getInput();
-const { audio_url } = input;
+// 👇 API KEY DIRECTA (para evitar problemas con env variables)
+const API_KEY = "bb920a640fbb45e2bd1f77cb091991a0";
 
-const API_KEY = process.env.ASSEMBLY_API_KEY;
+const input = await Actor.getInput();
+
+// 👇 nombre EXACTO que debes usar en el input
+const audio_url = input?.audio_url;
 
 if (!audio_url) {
     throw new Error("Falta audio_url en el input");
-}
-
-if (!API_KEY) {
-    throw new Error("Falta ASSEMBLY_API_KEY en variables de entorno");
 }
 
 try {
@@ -24,7 +23,7 @@ try {
             audio_url: audio_url,
             punctuate: true,
             format_text: true,
-            speech_models: ["universal-2"] // 👈 CORRECTO
+            speech_models: ["universal-2"] // 👈 formato correcto nuevo
         },
         {
             headers: {
@@ -35,7 +34,6 @@ try {
     );
 
     const transcriptId = response.data.id;
-
     console.log("Transcript ID:", transcriptId);
 
     // 2. Esperar resultado
@@ -64,7 +62,7 @@ try {
         }
     }
 
-    console.log("Texto:", result.text);
+    console.log("Texto final:", result.text);
 
     await Actor.pushData({
         text: result.text
