@@ -39,7 +39,7 @@ PlayResY: 854
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,Arial,42,&H00FFFF00,&H00000000,&H00000000,1,0,0,2,20,20,40
+Style: Default,Arial,46,&H0000FFFF,&H00000000,&H00000000,1,0,0,2,20,20,80
 
 [Events]
 Format: Start,End,Style,Text
