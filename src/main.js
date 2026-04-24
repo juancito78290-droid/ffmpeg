@@ -7,7 +7,8 @@ await Actor.init();
 const input = await Actor.getInput();
 const items = input.items || [];
 
-const store = await Actor.openKeyValueStore();
+// 🔥 STORE ÚNICO POR EJECUCIÓN
+const store = await Actor.openKeyValueStore(`run-${Date.now()}-${Math.random()}`);
 const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
@@ -63,12 +64,13 @@ Format: Start,End,Style,Text
 
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
-    // 🎬 RENDER (tu lógica intacta)
+    // 🎬 RENDER (igual que el tuyo)
     execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
 
-    // Guardar
+    // 🔥 KEY ÚNICA
+    const key = `output_${i}_${Date.now()}_${Math.random()}.mp4`;
+
     const buffer = fs.readFileSync(`output_${i}.mp4`);
-    const key = `output_${i}.mp4`;
 
     await Actor.setValue(key, buffer, {
         contentType: 'video/mp4'
