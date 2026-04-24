@@ -19,10 +19,10 @@ console.log(`🎬 Procesando item ${i}`);
 execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`);
 execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`);
 
-// Normalizar audio
-execSync(`ffmpeg -y -err_detect ignore_err -i audio_${i}.mp3 -ar 44100 -ac 2 -b:a 96k audio_fixed_${i}.mp3`);
+// Normalizar audio (más liviano)
+execSync(`ffmpeg -y -i audio_${i}.mp3 -ar 44100 -ac 2 -b:a 96k audio_fixed_${i}.mp3`);
 
-// TEXTO
+// 🔥 TEXTO EN MAYÚSCULAS
 const words = text.toUpperCase().split(" ");
 const chunkSize = Math.ceil(words.length / 5);
 const parts = [];
@@ -31,8 +31,9 @@ for (let j = 0; j < words.length; j += chunkSize) {
 parts.push(words.slice(j, j + chunkSize).join(" "));
 }
 
-// ASS
+// 🔥 ASS
 let ass = `[Script Info]
+
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
@@ -40,7 +41,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,DejaVu Sans Bold,52,&H0000EEFF,&H0000EEFF,&H00000000,&H00000000,3,2,0,2,20,20,60
+Style: Default,DejaVu Sans Bold,46,&H0000EEFF,&H0000EEFF,&H00000000,&H80000000,3,2,0,2,20,20,90
 
 [Events]
 Format: Start,End,Style,Text
@@ -58,17 +59,15 @@ return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(5,'0')}`;
 parts.forEach((p, idx) => {
 const start = idx * partDuration;
 const end = start + partDuration;
-ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,${p}\n`;
+
+// 🔥 Fondo negro por línea (ASS)
+ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,{\\bord0\\shad0\\3c&H000000&\\4c&H80000000&\\p1}m 0 0 l 720 0 l 720 200 l 0 200{\\p0}\\N${p}\n`;
 });
 
 fs.writeFileSync(`subs_${i}.ass`, ass);
 
-// 🔥 SOLO AQUÍ ESTÁ EL CAMBIO REAL
-// Orden correcto: scale -> delogo -> ass
-const filter = `scale=720:1280,delogo=x=0:y=1080:w=720:h=200,ass=subs_${i}.ass`;
-
-// RENDER
-execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "${filter}" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
+// 🎬 RENDER (CONFIGURACIÓN ANTI-CRASH REAL)
+execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
 
 // Guardar
 const buffer = fs.readFileSync(`output_${i}.mp4`);
@@ -85,6 +84,7 @@ console.log("✅ VIDEO LISTO:", url);
 await Actor.pushData({
 videoUrl: url
 });
+
 }
 
 await Actor.exit();
