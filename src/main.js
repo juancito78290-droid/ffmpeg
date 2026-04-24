@@ -31,7 +31,7 @@ for (let j = 0; j < words.length; j += chunkSize) {
 parts.push(words.slice(j, j + chunkSize).join(" "));
 }
 
-// 🔥 ASS
+// 🔥 ASS (SIN RESALTADO NEGRO)
 let ass = `[Script Info]
 
 ScriptType: v4.00+
@@ -41,7 +41,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,DejaVu Sans Bold,52,&H0000EEFF,&H0000EEFF,&H00000000,&H00000000,3,2,0,2,20,20,60
+Style: Default,DejaVu Sans Bold,52,&H0000EEFF,&H0000EEFF,&H00000000,&H00000000,1,0,0,2,20,20,60
 
 [Events]
 Format: Start,End,Style,Text
@@ -65,8 +65,8 @@ ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,${p}\n`;
 
 fs.writeFileSync(`subs_${i}.ass`, ass);
 
-// 🎬 RENDER (CONFIGURACIÓN ANTI-CRASH REAL)
-execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
+// 🎬 RENDER (CON DELOGO ANTES DEL TEXTO)
+execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "delogo=x=0:y=900:w=720:h=250,scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
 
 // Guardar
 const buffer = fs.readFileSync(`output_${i}.mp4`);
