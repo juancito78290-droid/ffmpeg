@@ -7,7 +7,7 @@ await Actor.init();
 const input = await Actor.getInput();
 const items = input.items || [];
 
-// 🔥 STORE ÚNICO (sin caracteres inválidos)
+// 🔥 STORE ÚNICO
 const randomId = Math.random().toString(36).substring(2, 10);
 const store = await Actor.openKeyValueStore(`run-${Date.now()}-${randomId}`);
 const storeId = store.id;
@@ -21,8 +21,8 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`);
     execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`);
 
-    // Normalizar audio
-    execSync(`ffmpeg -y -i audio_${i}.mp3 -ar 44100 -ac 2 -b:a 96k audio_fixed_${i}.mp3`);
+    // 🔊 AUMENTAR VOLUMEN A 3.0
+    execSync(`ffmpeg -y -i audio_${i}.mp3 -af "volume=3.0" -ar 44100 -ac 2 -b:a 128k audio_fixed_${i}.mp3`);
 
     // 🔥 TEXTO EN MAYÚSCULAS
     const words = text.toUpperCase().split(" ");
@@ -66,9 +66,9 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // 🎬 RENDER (video muteado + tu audio)
-    execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 96k output_${i}.mp4`);
+    execSync(`ffmpeg -y -i video_${i}.mp4 -i audio_fixed_${i}.mp3 -vf "scale=720:1280,ass=subs_${i}.ass" -t 15 -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 32 -threads 1 -c:a aac -b:a 128k output_${i}.mp4`);
 
-    // 🔥 KEY ÚNICA (sin caracteres inválidos)
+    // 🔥 KEY ÚNICA
     const uniqueId = Math.floor(Math.random() * 1000000);
     const key = `output-${i}-${Date.now()}-${uniqueId}.mp4`;
 
