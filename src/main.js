@@ -15,31 +15,33 @@ for (let i = 0; i < items.length; i++) {
 
     console.log(`Procesando item ${i}`);
 
+    // =========================
+    // DESCARGAS
+    // =========================
     execSync(`curl -L "${imageUrl}" -o image_${i}.jpg`, { stdio: 'inherit' });
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
     execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`, { stdio: 'inherit' });
 
-    // 🔥 AUDIO 1.3x (tipo YouTube)
+    // =========================
+    // AUDIO 1.3x
+    // =========================
     execSync(`
         ffmpeg -y -i audio_${i}.mp3 \
         -filter:a "atempo=1.3" \
-        audio_fixed_${i}.mp3
+        -vn audio_fast_${i}.mp3
     `, { stdio: 'inherit' });
 
-    // ⏱️ DURACIÓN
+    // DURACIÓN REAL (ya acelerado)
     const duration = parseFloat(
-        execSync(`ffprobe -i audio_fixed_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`)
-            .toString()
-            .trim()
+        execSync(`ffprobe -i audio_fast_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`)
+            .toString().trim()
     );
 
-    if (!duration || isNaN(duration)) {
-        throw new Error('No se pudo obtener duración del audio');
-    }
+    console.log("Duración final:", duration);
 
-    console.log("Duración:", duration);
-
-    // 🔤 TEXTO
+    // =========================
+    // TEXTO (ASS)
+    // =========================
     const words = text.toUpperCase().split(" ");
     const chunkSize = Math.ceil(words.length / 5);
     const parts = [];
@@ -79,13 +81,24 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 IMAGEN: impacto + zoom
+    // 🖼️ IMAGEN (EFECTO VIRAL REAL)
     // =========================
     execSync(`
         ffmpeg -y -loop 1 -i image_${i}.jpg \
-        -vf "scale=720:1280,setsar=1,
-        fade=t=in:st=0:d=0.6,
-        zoompan=z='if(lte(on,30),1.0,zoom+0.001)':d=125:s=720x1280" \
+        -vf "
+        scale=720:1280:force_original_aspect_ratio=decrease,
+        pad=720:1280:(ow-iw)/2:(oh-ih)/2,
+
+        zoompan=
+        z='if(lte(on,8),1+0.18*on, if(lte(on,30),1.4-(on-8)*0.02,1.1))':
+        d=125:s=720x1280,
+
+        boxblur='if(lte(on,8),5,0)',
+
+        eq=contrast=1.2:saturation=1.3,
+        unsharp=5:5:1.0,
+        setsar=1
+        " \
         -t 5 \
         -c:v libx264 -preset ultrafast -crf 28 \
         -pix_fmt yuv420p \
@@ -93,24 +106,26 @@ Format: Start,End,Style,Text
     `, { stdio: 'inherit' });
 
     // =========================
-    // 🎬 VIDEO 1.5x
+    // 🎥 VIDEO (1.5x velocidad)
     // =========================
     const remaining = Math.max(duration - 5, 1);
 
     execSync(`
         ffmpeg -y -i video_${i}.mp4 \
-        -vf "setpts=PTS/1.5,
+        -filter:v "setpts=PTS/1.5,
         scale=720:1280:force_original_aspect_ratio=decrease,
         pad=720:1280:(ow-iw)/2:(oh-ih)/2,
         setsar=1" \
         -t ${remaining} \
+        -an \
         -c:v libx264 -preset ultrafast -crf 28 \
-        -pix_fmt yuv420p \
         video_part_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // 🔗 UNIR
-    fs.writeFileSync(`list_${i}.txt`, 
+    // =========================
+    // UNIR
+    // =========================
+    fs.writeFileSync(`list_${i}.txt`,
 `file 'image_part_${i}.mp4'
 file 'video_part_${i}.mp4'`);
 
@@ -119,19 +134,22 @@ file 'video_part_${i}.mp4'`);
         -c copy combined_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // 🎬 FINAL
+    // =========================
+    // FINAL
+    // =========================
     execSync(`
-        ffmpeg -y -i combined_${i}.mp4 -i audio_fixed_${i}.mp3 \
+        ffmpeg -y -i combined_${i}.mp4 -i audio_fast_${i}.mp3 \
         -vf "ass=subs_${i}.ass" \
         -t ${duration} \
         -c:v libx264 -preset ultrafast -crf 28 \
         -c:a aac -b:a 128k \
-        -pix_fmt yuv420p \
         -shortest \
         output_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // 💾 GUARDAR
+    // =========================
+    // GUARDAR
+    // =========================
     const key = `output-${i}-${Date.now()}.mp4`;
     const videoBuffer = fs.readFileSync(`output_${i}.mp4`);
 
