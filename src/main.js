@@ -48,7 +48,7 @@ PlayResY: 1280
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,DejaVu Sans,58,&H0000FFFF,&H00000000,&H00000000,1,3,0,2,20,20,240
+Style: Default,DejaVuSans-Bold,58,&H00FFFF00,&H00000000,&H00000000,1,3,0,2,20,20,240
 
 [Events]
 Format: Start,End,Style,Text
@@ -71,13 +71,13 @@ parts.forEach((p, idx) => {
 fs.writeFileSync(`subs_${i}.ass`, ass);  
 
 // =========================  
-// 🎬 IMAGEN (ROTACIÓN ENTRADA)  
+// 🎬 IMAGEN (ROTACIÓN RÁPIDA)  
 // =========================  
 execSync(`
 ffmpeg -y -loop 1 -i image_${i}.jpg -vf "
 scale=720:1280:force_original_aspect_ratio=decrease,
 pad=720:1280:(ow-iw)/2:(oh-ih)/2,
-rotate='if(lt(t,1),2*PI*t,0)':c=black@0,
+rotate='if(lt(t,0.6),2*PI*(t/0.6),0)':c=black@0,
 setsar=1
 " -t 5 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p image_part_${i}.mp4
 `, { stdio: 'inherit' });
