@@ -15,26 +15,18 @@ for (let i = 0; i < items.length; i++) {
 
     console.log(`Procesando item ${i}`);
 
-    // =========================
-    // 🖼️ IMAGEN (URL)
-    // =========================
     execSync(`curl -L "${imageUrl}" -o image_${i}.jpg`, { stdio: 'inherit' });
-
-    // =========================
-    // 🎥 VIDEO (URL)
-    // =========================
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
-
-    // =========================
-    // 🔊 AUDIO
-    // =========================
     execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`, { stdio: 'inherit' });
 
-    execSync(`ffmpeg -y -i audio_${i}.mp3 -vn -acodec libmp3lame audio_fixed_${i}.mp3`, { stdio: 'inherit' });
+    // 🔥 AUDIO 1.3x (tipo YouTube)
+    execSync(`
+        ffmpeg -y -i audio_${i}.mp3 \
+        -filter:a "atempo=1.3" \
+        audio_fixed_${i}.mp3
+    `, { stdio: 'inherit' });
 
-    // =========================
     // ⏱️ DURACIÓN
-    // =========================
     const duration = parseFloat(
         execSync(`ffprobe -i audio_fixed_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`)
             .toString()
@@ -47,9 +39,7 @@ for (let i = 0; i < items.length; i++) {
 
     console.log("Duración:", duration);
 
-    // =========================
-    // 🔤 TEXTO → ASS
-    // =========================
+    // 🔤 TEXTO
     const words = text.toUpperCase().split(" ");
     const chunkSize = Math.ceil(words.length / 5);
     const parts = [];
@@ -65,7 +55,7 @@ PlayResY: 1280
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,Arial,52,&H0000FFFF,&H00000000,&H00000000,1,2,0,2,20,20,220
+Style: Default,DejaVu Sans Bold,56,&H0000FFFF,&H00000000,&H00000000,1,2,0,2,20,20,220
 
 [Events]
 Format: Start,End,Style,Text
@@ -89,12 +79,13 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 PARTE 1: IMAGEN (RESPETA 9:16 REAL)
+    // 🎬 IMAGEN: impacto + zoom
     // =========================
     execSync(`
         ffmpeg -y -loop 1 -i image_${i}.jpg \
         -vf "scale=720:1280,setsar=1,
-        zoompan=z='min(zoom+0.0008,1.1)':d=125:s=720x1280" \
+        fade=t=in:st=0:d=0.6,
+        zoompan=z='if(lte(on,30),1.0,zoom+0.001)':d=125:s=720x1280" \
         -t 5 \
         -c:v libx264 -preset ultrafast -crf 28 \
         -pix_fmt yuv420p \
@@ -102,13 +93,14 @@ Format: Start,End,Style,Text
     `, { stdio: 'inherit' });
 
     // =========================
-    // 🎬 PARTE 2: VIDEO (VERTICAL SIN DEFORMAR)
+    // 🎬 VIDEO 1.5x
     // =========================
     const remaining = Math.max(duration - 5, 1);
 
     execSync(`
         ffmpeg -y -i video_${i}.mp4 \
-        -vf "scale=720:1280:force_original_aspect_ratio=decrease,
+        -vf "setpts=PTS/1.5,
+        scale=720:1280:force_original_aspect_ratio=decrease,
         pad=720:1280:(ow-iw)/2:(oh-ih)/2,
         setsar=1" \
         -t ${remaining} \
@@ -117,9 +109,7 @@ Format: Start,End,Style,Text
         video_part_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // =========================
-    // 🔗 UNIR VIDEO
-    // =========================
+    // 🔗 UNIR
     fs.writeFileSync(`list_${i}.txt`, 
 `file 'image_part_${i}.mp4'
 file 'video_part_${i}.mp4'`);
@@ -129,9 +119,7 @@ file 'video_part_${i}.mp4'`);
         -c copy combined_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // =========================
-    // 🎬 FINAL + AUDIO + SUBS
-    // =========================
+    // 🎬 FINAL
     execSync(`
         ffmpeg -y -i combined_${i}.mp4 -i audio_fixed_${i}.mp3 \
         -vf "ass=subs_${i}.ass" \
@@ -143,9 +131,7 @@ file 'video_part_${i}.mp4'`);
         output_${i}.mp4
     `, { stdio: 'inherit' });
 
-    // =========================
     // 💾 GUARDAR
-    // =========================
     const key = `output-${i}-${Date.now()}.mp4`;
     const videoBuffer = fs.readFileSync(`output_${i}.mp4`);
 
