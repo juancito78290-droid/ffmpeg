@@ -89,11 +89,11 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 PARTE 1: IMAGEN (5s con zoom, 9:16)
+    // 🎬 PARTE 1: IMAGEN (5s con zoom SIN deformar)
     // =========================
     execSync(`
         ffmpeg -y -loop 1 -i image_${i}.jpg \
-        -vf "zoompan=z='min(zoom+0.001,1.3)':d=125,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280" \
+        -vf "zoompan=z='min(zoom+0.001,1.3)':d=125,scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1" \
         -t 5 \
         -c:v libx264 -preset ultrafast -crf 28 \
         -pix_fmt yuv420p \
@@ -101,13 +101,13 @@ Format: Start,End,Style,Text
     `, { stdio: 'inherit' });
 
     // =========================
-    // 🎬 PARTE 2: VIDEO (RESTO DEL TIEMPO)
+    // 🎬 PARTE 2: VIDEO (RESTO)
     // =========================
     const remaining = Math.max(duration - 5, 1);
 
     execSync(`
         ffmpeg -y -i video_${i}.mp4 \
-        -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280" \
+        -vf "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1" \
         -t ${remaining} \
         -c:v libx264 -preset ultrafast -crf 28 \
         -pix_fmt yuv420p \
@@ -115,7 +115,7 @@ Format: Start,End,Style,Text
     `, { stdio: 'inherit' });
 
     // =========================
-    // 🔗 UNIR VIDEO
+    // 🔗 UNIR
     // =========================
     fs.writeFileSync(`list_${i}.txt`, `
 file 'image_part_${i}.mp4'
