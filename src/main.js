@@ -47,8 +47,8 @@ PlayResX: 720
 PlayResY: 1280
 
 [V4+ Styles]
-Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,DejaVuSans-Bold,58,&H00FFFF00,&H00000000,&H00000000,1,3,0,2,20,20,240
+Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Bold
+Style: Default,DejaVu Sans,48,&H0000FFFF,&H00000000,&H00000000,1,3,0,2,20,20,240,1
 
 [Events]
 Format: Start,End,Style,Text
