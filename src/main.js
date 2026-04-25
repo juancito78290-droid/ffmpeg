@@ -48,7 +48,7 @@ for (let i = 0; i < items.length; i++) {
     console.log("Duración:", duration);
 
     // =========================
-    // 🔤 TEXTO → ASS (AMARILLO SIN FONDO)
+    // 🔤 TEXTO → ASS
     // =========================
     const words = text.toUpperCase().split(" ");
     const chunkSize = Math.ceil(words.length / 5);
@@ -89,14 +89,12 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 PARTE 1: IMAGEN (5s CORRECTO 9:16)
+    // 🎬 PARTE 1: IMAGEN (RESPETA 9:16 REAL)
     // =========================
     execSync(`
         ffmpeg -y -loop 1 -i image_${i}.jpg \
-        -vf "zoompan=z='min(zoom+0.0008,1.15)':d=125,
-        scale=720:1280:force_original_aspect_ratio=decrease,
-        pad=720:1280:(ow-iw)/2:(oh-ih)/2,
-        setsar=1" \
+        -vf "scale=720:1280,setsar=1,
+        zoompan=z='min(zoom+0.0008,1.1)':d=125:s=720x1280" \
         -t 5 \
         -c:v libx264 -preset ultrafast -crf 28 \
         -pix_fmt yuv420p \
@@ -104,7 +102,7 @@ Format: Start,End,Style,Text
     `, { stdio: 'inherit' });
 
     // =========================
-    // 🎬 PARTE 2: VIDEO (SIN DEFORMAR)
+    // 🎬 PARTE 2: VIDEO (VERTICAL SIN DEFORMAR)
     // =========================
     const remaining = Math.max(duration - 5, 1);
 
