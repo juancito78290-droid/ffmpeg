@@ -1,120 +1,90 @@
-import { Actor } from 'apify';
-import { execSync } from 'child_process';
-import fs from 'fs';
+import { Actor } from "apify";
+import { execSync } from "child_process";
 
 await Actor.init();
 
 const input = await Actor.getInput();
-const items = input?.items || [];
+const items = input.items || [];
+
+// dividir texto en frases
+function splitText(text) {
+    return text.split(".").map(t => t.trim()).filter(Boolean);
+}
 
 for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
     console.log(`Procesando item ${i}`);
 
-    // ✅ Adaptado a tu input
-    const image = items[i].imageUrl;
-    const video = items[i].videoUrl;
-    const audio = items[i].audioUrl;
-    const text = items[i].text || "VIDEO VIRAL";
-
-    if (!image || !audio) {
-        console.log("❌ Faltan datos en item:", items[i]);
+    if (!item.imageUrl || !item.audioUrl) {
+        console.log("❌ Faltan URLs");
         continue;
     }
 
-    console.log("IMAGE:", image);
-    console.log("AUDIO:", audio);
+    execSync(`curl -L "${item.imageUrl}" -o image_${i}.jpg`);
+    execSync(`curl -L "${item.audioUrl}" -o audio_${i}.mp3`);
 
-    // 📥 Descargar archivos
-    execSync(`curl -L "${image}" -o image_${i}.jpg`);
-    execSync(`curl -L "${audio}" -o audio_${i}.mp3`);
+    // acelerar audio
+    execSync(`ffmpeg -y -i audio_${i}.mp3 -filter:a atempo=1.2 audio_fast_${i}.mp3`);
 
-    // 🔊 Acelerar audio (1.3x real)
-    execSync(`ffmpeg -y -i audio_${i}.mp3 -filter:a "atempo=1.3" audio_fast_${i}.mp3`);
-
-    // ⏱️ Duración
+    // duración
     const duration = parseFloat(
-        execSync(`ffprobe -i audio_fast_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`).toString()
+        execSync(`ffprobe -i audio_fast_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`)
+            .toString()
+            .trim()
     );
 
-    console.log("Duración:", duration);
-
-    // =========================
-    // 🔤 SUBTÍTULOS (DejaVu Amarillo)
-    // =========================
-    const words = text.toUpperCase().split(" ");
-    const chunkSize = Math.ceil(words.length / 5);
-    const parts = [];
-
-    for (let j = 0; j < words.length; j += chunkSize) {
-        parts.push(words.slice(j, j + chunkSize).join(" "));
-    }
-
-    let ass = `[Script Info]
-ScriptType: v4.00+
-PlayResX: 720
-PlayResY: 1280
-
-[V4+ Styles]
-Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,DejaVu Sans Bold,60,&H00FFFF00,&H00000000,&H00000000,1,3,0,2,20,20,200
-
-[Events]
-Format: Start,End,Style,Text
-`;
-
-    function formatTime(sec) {
-        const m = Math.floor(sec / 60);
-        const s = (sec % 60).toFixed(2);
-        return `0:${String(m).padStart(2,'0')}:${String(s).padStart(5,'0')}`;
-    }
-
+    const parts = splitText(item.text || "");
     const partDuration = duration / parts.length;
 
+    // generar drawtext dinámico
+    let drawTextFilters = "";
+
     parts.forEach((p, idx) => {
-        const start = idx * partDuration;
-        const end = start + partDuration;
-        ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,${p}\n`;
+        const start = (idx * partDuration).toFixed(2);
+        const end = ((idx + 1) * partDuration).toFixed(2);
+
+        drawTextFilters += `
+        drawtext=
+        text='${p.replace(/'/g, "")}':
+        fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:
+        fontsize=48:
+        fontcolor=yellow:
+        borderw=2:
+        bordercolor=black:
+        x=(w-text_w)/2:
+        y=h-300:
+        enable='between(t,${start},${end})'
+        ,`;
     });
 
-    fs.writeFileSync(`subs_${i}.ass`, ass);
+    drawTextFilters = drawTextFilters.slice(0, -1);
 
-    // =========================
-    // 🎬 IMAGEN (BLUR → NÍTIDO)
-    // =========================
     execSync(`
-        ffmpeg -y -loop 1 -i image_${i}.jpg -i audio_fast_${i}.mp3 \
-        -filter_complex "
-        [0:v]scale=720:1280:force_original_aspect_ratio=decrease,
-        pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,split=2[base][blur];
+    ffmpeg -y -loop 1 -i image_${i}.jpg -i audio_fast_${i}.mp3 \
+    -filter_complex "
+    [0:v]scale=720:1280:force_original_aspect_ratio=decrease,
+    pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,split=2[base][blur];
 
-        [blur]gblur=sigma=20[blurred];
-        [base]null[normal];
+    [blur]gblur=sigma=8[blurred];
 
-        [blurred][normal]xfade=transition=fade:duration=0.6:offset=0.4
-        " \
-        -map 0:v -map 1:a \
-        -t ${duration} \
-        -c:v libx264 -preset ultrafast -crf 28 \
-        -c:a aac -b:a 128k \
-        -pix_fmt yuv420p \
-        temp_${i}.mp4
+    [base]zoompan=z='1+0.005*sin(on/10)':d=125:s=720x1280[normal];
+
+    [blurred][normal]xfade=transition=fade:duration=0.5:offset=0.3,
+    ${drawTextFilters}
+    " \
+    -map 0:v -map 1:a \
+    -t ${duration} \
+    -c:v libx264 -preset ultrafast -crf 28 \
+    -c:a aac -b:a 96k \
+    -pix_fmt yuv420p \
+    output_${i}.mp4
     `);
 
-    // =========================
-    // 🔤 QUEMAR SUBTÍTULOS
-    // =========================
-    execSync(`
-        ffmpeg -y -i temp_${i}.mp4 \
-        -vf "ass=subs_${i}.ass" \
-        -c:v libx264 -preset ultrafast -crf 28 \
-        -c:a copy \
-        output_${i}.mp4
-    `);
-
-    console.log("✅ Video listo:", `output_${i}.mp4`);
+    console.log(`🔥 Viral listo: output_${i}.mp4`);
 
     await Actor.pushData({
-        video: `output_${i}.mp4`
+        output: `output_${i}.mp4`
     });
 }
 
