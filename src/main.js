@@ -7,7 +7,6 @@ await Actor.init();
 const input = await Actor.getInput();
 const items = input.items || [];
 
-// STORE
 const store = await Actor.openKeyValueStore(`run-${Date.now()}`);
 const storeId = store.id;
 
@@ -17,7 +16,7 @@ for (let i = 0; i < items.length; i++) {
     console.log(`Procesando item ${i}`);
 
     // =========================
-    // 🖼️ IMAGEN (base64)
+    // 🖼️ IMAGEN
     // =========================
     let buffer;
 
@@ -38,7 +37,6 @@ for (let i = 0; i < items.length; i++) {
     // =========================
     execSync(`curl -L "${audioUrl}" -o audio_${i}.mp3`, { stdio: 'inherit' });
 
-    // reparar audio (evita errores de decoding)
     execSync(`ffmpeg -y -i audio_${i}.mp3 -vn -acodec libmp3lame audio_fixed_${i}.mp3`, { stdio: 'inherit' });
 
     // =========================
@@ -51,13 +49,13 @@ for (let i = 0; i < items.length; i++) {
     );
 
     if (!duration || isNaN(duration)) {
-        throw new Error('No se pudo obtener duración del audio');
+        throw new Error('No se pudo obtener duración');
     }
 
     console.log("Duración:", duration);
 
     // =========================
-    // 🔤 TEXTO → ASS (AMARILLO)
+    // 🔤 SUBTÍTULOS (AMARILLO)
     // =========================
     const words = text.toUpperCase().split(" ");
     const chunkSize = Math.ceil(words.length / 5);
@@ -74,7 +72,7 @@ PlayResY: 1280
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV
-Style: Default,Arial Bold,48,&H0000FFFF,&H00000000,&H80000000,3,3,0,2,20,20,200
+Style: Default,Arial,52,&H0000FFFF,&H00000000,&H80000000,3,3,0,2,20,20,220
 
 [Events]
 Format: Start,End,Style,Text
@@ -98,11 +96,24 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 FFMPEG (FIX REAL)
+    // 🎬 VIDEO (FIX REAL)
     // =========================
-    const filter = `zoompan=z='min(zoom+0.0008,1.2)':d=125,scale=720:-1,crop=720:1280,pad=720:1280:(ow-iw)/2:(oh-ih)/2,ass=subs_${i}.ass`;
+    const filter = `
+        zoompan=z='min(zoom+0.0008,1.2)':d=125,
+        scale=720:1280,
+        ass=subs_${i}.ass
+    `.replace(/\s+/g, '');
 
-    execSync(`ffmpeg -y -loop 1 -i image_${i}.jpg -i audio_fixed_${i}.mp3 -vf "${filter}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -pix_fmt yuv420p -shortest output_${i}.mp4`, { stdio: 'inherit' });
+    execSync(`
+        ffmpeg -y -loop 1 -i image_${i}.jpg -i audio_fixed_${i}.mp3 \
+        -vf "${filter}" \
+        -t ${duration} \
+        -c:v libx264 -preset ultrafast -crf 28 \
+        -c:a aac -b:a 128k \
+        -pix_fmt yuv420p \
+        -shortest \
+        output_${i}.mp4
+    `, { stdio: 'inherit' });
 
     // =========================
     // 💾 GUARDAR
