@@ -22,22 +22,35 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO DESDE WAV BINARIO (MAKE)
+    // 🔊 AUDIO (WAV desde Make o URL)
     // =========================
     let inputAudio = `audio_${i}.wav`;
     let outputMp3 = `audio_${i}.mp3`;
 
-    if (audioFile && audioFile.data) {
-        console.log("Recibiendo WAV binario desde Make...");
+    if (audioFile) {
+        console.log("Recibiendo audio desde Make...");
 
-        const buffer = Buffer.from(audioFile.data, 'base64');
-        fs.writeFileSync(inputAudio, buffer);
+        let base64Data;
+
+        if (audioFile.data) {
+            base64Data = audioFile.data;
+        } else if (typeof audioFile === 'string') {
+            base64Data = audioFile;
+        } else {
+            base64Data = JSON.stringify(audioFile);
+        }
+
+        try {
+            const buffer = Buffer.from(base64Data, 'base64');
+            fs.writeFileSync(inputAudio, buffer);
+        } catch (err) {
+            throw new Error("❌ Error convirtiendo base64 a WAV: " + err.message);
+        }
 
         console.log("Convirtiendo WAV → MP3...");
         execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
 
     } else {
-        // fallback por si mandas URL
         const finalAudioUrl = audioUrl || "https://api.apify.com/v2/key-value-stores/6FqBZhJ6rpn8znfeu/records/OUTPUT_MP3?disableRedirect=true";
 
         console.log("Descargando audio desde URL...");
@@ -47,7 +60,9 @@ for (let i = 0; i < items.length; i++) {
         execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
     }
 
+    // =========================
     // ⚡ AUDIO MÁS RÁPIDO
+    // =========================
     execSync(`ffmpeg -y -i ${outputMp3} -filter:a "atempo=1.2" audio_fast_${i}.mp3`, { stdio: 'inherit' });
 
     // =========================
