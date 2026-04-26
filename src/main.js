@@ -24,7 +24,7 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${finalAudioUrl}" -o audio_${i}.mp3`, { stdio: 'inherit' });
 
     // AUDIO 1.3x
-    execSync(`ffmpeg -y -i audio_${i}.mp3 -filter:a "atempo=1.3" audio_fast_${i}.mp3`, { stdio: 'inherit' });
+    execSync(`ffmpeg -y -i audio_${i}.mp3 -filter:a "atempo=1.2" audio_fast_${i}.mp3`, { stdio: 'inherit' });
 
     // DURACIÓN
     const duration = parseFloat(
