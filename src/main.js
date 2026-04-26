@@ -13,55 +13,46 @@ const storeId = store.id;
 for (let i = 0; i < items.length; i++) {
     const { imageUrl, videoUrl, audioUrl, audioFile, text } = items[i];
 
-    console.log(`Procesando item ${i}`);
+    console.log(`\n=== ITEM ${i} ===`);
 
     // =========================
-    // DESCARGAS
+    // DESCARGAR MEDIA
     // =========================
     execSync(`curl -L "${imageUrl}" -o image_${i}.jpg`, { stdio: 'inherit' });
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO (WAV desde Make o URL)
+    // 🔊 AUDIO (TU CASO REAL)
     // =========================
     let inputAudio = `audio_${i}.wav`;
     let outputMp3 = `audio_${i}.mp3`;
 
-    if (audioFile) {
-        console.log("Recibiendo audio desde Make...");
+    if (audioFile && audioFile.data && Array.isArray(audioFile.data)) {
+        console.log("Audio recibido como BUFFER REAL (Make)");
 
-        let base64Data;
+        // 🔥 ESTA ES LA LÍNEA CLAVE
+        const buffer = Buffer.from(audioFile.data);
 
-        if (audioFile.data) {
-            base64Data = audioFile.data;
-        } else if (typeof audioFile === 'string') {
-            base64Data = audioFile;
-        } else {
-            base64Data = JSON.stringify(audioFile);
-        }
+        fs.writeFileSync(inputAudio, buffer);
 
-        try {
-            const buffer = Buffer.from(base64Data, 'base64');
-            fs.writeFileSync(inputAudio, buffer);
-        } catch (err) {
-            throw new Error("❌ Error convirtiendo base64 a WAV: " + err.message);
-        }
+        console.log("WAV guardado correctamente");
 
-        console.log("Convirtiendo WAV → MP3...");
-        execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
+    } else if (audioUrl) {
+        console.log("Usando audio desde URL");
+
+        execSync(`curl -L "${audioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
 
     } else {
-        const finalAudioUrl = audioUrl || "https://api.apify.com/v2/key-value-stores/6FqBZhJ6rpn8znfeu/records/OUTPUT_MP3?disableRedirect=true";
-
-        console.log("Descargando audio desde URL...");
-        execSync(`curl -L "${finalAudioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
-
-        console.log("Convirtiendo a MP3...");
-        execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
+        throw new Error("❌ No hay audio válido");
     }
 
     // =========================
-    // ⚡ AUDIO MÁS RÁPIDO
+    // CONVERTIR A MP3
+    // =========================
+    execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
+
+    // =========================
+    // ACELERAR AUDIO
     // =========================
     execSync(`ffmpeg -y -i ${outputMp3} -filter:a "atempo=1.2" audio_fast_${i}.mp3`, { stdio: 'inherit' });
 
@@ -79,8 +70,8 @@ for (let i = 0; i < items.length; i++) {
     // =========================
     // SUBTÍTULOS
     // =========================
-    const words = text.toUpperCase().split(" ");
-    const chunkSize = Math.ceil(words.length / 5);
+    const words = (text || "").toUpperCase().split(" ");
+    const chunkSize = Math.ceil(words.length / 5) || 1;
     const parts = [];
 
     for (let j = 0; j < words.length; j += chunkSize) {
@@ -117,21 +108,20 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // 🎬 IMAGEN
+    // IMAGEN
     // =========================
     execSync(`
 ffmpeg -y -loop 1 -i image_${i}.jpg -vf "
 fps=60,
 scale=720:1280:force_original_aspect_ratio=decrease,
 pad=720:1280:(ow-iw)/2:(oh-ih)/2,
-rotate='if(lt(t,0.2),2*PI*(t/0.2),0)':c=black@0,
 zoompan=z='if(gt(on,12),1+0.002*(on-12),1)':d=300:s=720x1280,
 setsar=1
 " -t 5 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p image_part_${i}.mp4
 `, { stdio: 'inherit' });
 
     // =========================
-    // 🎬 VIDEO
+    // VIDEO
     // =========================
     const remaining = Math.max(duration - 5, 1);
 
@@ -164,9 +154,9 @@ ffmpeg -y -i combined_${i}.mp4 -i audio_fast_${i}.mp3 -vf "ass=subs_${i}.ass" -t
     // GUARDAR
     // =========================
     const key = `output-${i}-${Date.now()}.mp4`;
-    const buffer = fs.readFileSync(`output_${i}.mp4`);
+    const bufferOut = fs.readFileSync(`output_${i}.mp4`);
 
-    await Actor.setValue(key, buffer, { contentType: 'video/mp4' });
+    await Actor.setValue(key, bufferOut, { contentType: 'video/mp4' });
 
     const url = `https://api.apify.com/v2/key-value-stores/${storeId}/records/${key}`;
     console.log("VIDEO LISTO:", url);
