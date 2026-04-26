@@ -11,10 +11,7 @@ const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
-    const { imageUrl, videoUrl, audioUrl, text } = items[i];
-
-    // 👉 fallback al audio de Piper
-    const finalAudioUrl = audioUrl || "https://api.apify.com/v2/key-value-stores/6FqBZhJ6rpn8znfeu/records/OUTPUT_MP3?disableRedirect=true";
+    const { imageUrl, videoUrl, audioUrl, audioFile, text } = items[i];
 
     console.log(`Procesando item ${i}`);
 
@@ -24,18 +21,30 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${imageUrl}" -o image_${i}.jpg`, { stdio: 'inherit' });
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
-    // 🔊 DESCARGAR AUDIO (sin asumir formato)
-    execSync(`curl -L "${finalAudioUrl}" -o audio_${i}`, { stdio: 'inherit' });
-
-    let inputAudio = `audio_${i}`;
+    // =========================
+    // 🔊 AUDIO DESDE WAV BINARIO (MAKE)
+    // =========================
+    let inputAudio = `audio_${i}.wav`;
     let outputMp3 = `audio_${i}.mp3`;
 
-    // 🔁 CONVERTIR A MP3 SI NO LO ES
-    if (!finalAudioUrl.toLowerCase().includes(".mp3")) {
-        console.log("Convirtiendo audio a MP3...");
+    if (audioFile && audioFile.data) {
+        console.log("Recibiendo WAV binario desde Make...");
+
+        const buffer = Buffer.from(audioFile.data, 'base64');
+        fs.writeFileSync(inputAudio, buffer);
+
+        console.log("Convirtiendo WAV → MP3...");
         execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
+
     } else {
-        fs.renameSync(inputAudio, outputMp3);
+        // fallback por si mandas URL
+        const finalAudioUrl = audioUrl || "https://api.apify.com/v2/key-value-stores/6FqBZhJ6rpn8znfeu/records/OUTPUT_MP3?disableRedirect=true";
+
+        console.log("Descargando audio desde URL...");
+        execSync(`curl -L "${finalAudioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
+
+        console.log("Convirtiendo a MP3...");
+        execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
     }
 
     // ⚡ AUDIO MÁS RÁPIDO
