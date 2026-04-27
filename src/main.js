@@ -11,7 +11,7 @@ const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
-    const { imageUrl, videoUrl, audioUrl, audioFile, text } = items[i];
+    const { imageUrl, videoUrl, audioUrl, text } = items[i];
 
     console.log(`\n=== ITEM ${i} ===`);
 
@@ -22,39 +22,21 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO (TU CASO REAL)
+    // 🔊 AUDIO SOLO DESDE URL (MP3)
     // =========================
-    let inputAudio = `audio_${i}.wav`;
-    let outputMp3 = `audio_${i}.mp3`;
+    let inputAudio = `audio_${i}.mp3`;
 
-    if (audioFile && audioFile.data && Array.isArray(audioFile.data)) {
-        console.log("Audio recibido como BUFFER REAL (Make)");
-
-        // 🔥 ESTA ES LA LÍNEA CLAVE
-        const buffer = Buffer.from(audioFile.data);
-
-        fs.writeFileSync(inputAudio, buffer);
-
-        console.log("WAV guardado correctamente");
-
-    } else if (audioUrl) {
-        console.log("Usando audio desde URL");
-
+    if (audioUrl) {
+        console.log("Descargando audio MP3 desde URL...");
         execSync(`curl -L "${audioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
-
     } else {
-        throw new Error("❌ No hay audio válido");
+        throw new Error("❌ Debes enviar audioUrl (MP3)");
     }
-
-    // =========================
-    // CONVERTIR A MP3
-    // =========================
-    execSync(`ffmpeg -y -i ${inputAudio} -vn -ar 44100 -ac 2 -b:a 128k ${outputMp3}`, { stdio: 'inherit' });
 
     // =========================
     // ACELERAR AUDIO
     // =========================
-    execSync(`ffmpeg -y -i ${outputMp3} -filter:a "atempo=1.2" audio_fast_${i}.mp3`, { stdio: 'inherit' });
+    execSync(`ffmpeg -y -i ${inputAudio} -filter:a "atempo=1.2" audio_fast_${i}.mp3`, { stdio: 'inherit' });
 
     // =========================
     // DURACIÓN
