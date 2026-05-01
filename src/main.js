@@ -11,7 +11,7 @@ const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
-    const { imageUrl, videoUrl, audioUrl, audioBase64, wavAudio, text } = items[i];
+    const { imageUrl, videoUrl, audioUrl, text } = items[i];
 
     console.log(`\n=== ITEM ${i} ===`);
 
@@ -22,25 +22,15 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO: WAV multipart, base64 o URL MP3
+    // 🔊 AUDIO SOLO DESDE URL (MP3)
     // =========================
     let inputAudio = `audio_${i}.mp3`;
 
-    if (wavAudio) {
-        console.log("Convirtiendo WAV multipart a MP3...");
-        const wavBuffer = Buffer.from(wavAudio, 'binary');
-        fs.writeFileSync(`audio_${i}.wav`, wavBuffer);
-        execSync(`ffmpeg -y -i audio_${i}.wav -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
-    } else if (audioBase64) {
-        console.log("Convirtiendo WAV base64 a MP3...");
-        const wavBuffer = Buffer.from(audioBase64, 'base64');
-        fs.writeFileSync(`audio_${i}.wav`, wavBuffer);
-        execSync(`ffmpeg -y -i audio_${i}.wav -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
-    } else if (audioUrl) {
+    if (audioUrl) {
         console.log("Descargando audio MP3 desde URL...");
         execSync(`curl -L "${audioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
     } else {
-        throw new Error("❌ Debes enviar wavAudio, audioBase64 o audioUrl");
+        throw new Error("❌ Debes enviar audioUrl (MP3)");
     }
 
     // =========================
