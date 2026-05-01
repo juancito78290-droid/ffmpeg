@@ -22,15 +22,25 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO SOLO DESDE URL (MP3)
+    // 🔊 AUDIO SOLO DESDE URL (MP3 o Google Drive)
     // =========================
     let inputAudio = `audio_${i}.mp3`;
 
     if (audioUrl) {
-        console.log("Descargando audio MP3 desde URL...");
-        execSync(`curl -L "${audioUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
+        let downloadUrl = audioUrl;
+
+        const driveMatch = audioUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (driveMatch) {
+            const fileId = driveMatch[1];
+            downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            console.log("Google Drive detectado, descargando con ID:", fileId);
+        } else {
+            console.log("Descargando audio MP3 desde URL...");
+        }
+
+        execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${downloadUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
     } else {
-        throw new Error("❌ Debes enviar audioUrl (MP3)");
+        throw new Error("❌ Debes enviar audioUrl (MP3 o Google Drive)");
     }
 
     // =========================
