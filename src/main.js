@@ -11,7 +11,7 @@ const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
 for (let i = 0; i < items.length; i++) {
-    const { imageUrl, videoUrl, audioUrl, text: rawText } = items[i];
+    const { imageUrl, videoUrl, audioUrl, audioBase64, text: rawText } = items[i];
     const text = (rawText || "").replace(/[\x00-\x1F\x7F]/g, " ").trim();
 
     console.log(`\n=== ITEM ${i} ===`);
@@ -23,11 +23,16 @@ for (let i = 0; i < items.length; i++) {
     execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
 
     // =========================
-    // 🔊 AUDIO SOLO DESDE URL (MP3 o Google Drive)
+    // 🔊 AUDIO DESDE BASE64 (Gemini TTS), URL MP3 o Google Drive
     // =========================
     let inputAudio = `audio_${i}.mp3`;
 
-    if (audioUrl) {
+    if (audioBase64) {
+        console.log("Convirtiendo audioBase64 de Gemini TTS a MP3...");
+        const wavBuffer = Buffer.from(audioBase64, 'base64');
+        fs.writeFileSync(`audio_${i}.wav`, wavBuffer);
+        execSync(`ffmpeg -y -i audio_${i}.wav -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
+    } else if (audioUrl) {
         let downloadUrl = audioUrl;
 
         const driveMatch = audioUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -41,7 +46,7 @@ for (let i = 0; i < items.length; i++) {
 
         execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${downloadUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
     } else {
-        throw new Error("❌ Debes enviar audioUrl (MP3 o Google Drive)");
+        throw new Error("❌ Debes enviar audioBase64 o audioUrl (MP3 o Google Drive)");
     }
 
     // =========================
