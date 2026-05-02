@@ -52,7 +52,7 @@ for (let i = 0; i < items.length; i++) {
     // =========================
     // ACELERAR AUDIO
     // =========================
-    execSync(`ffmpeg -y -i ${inputAudio} -filter:a "atempo=1.5" audio_fast_${i}.mp3`, { stdio: 'inherit' });
+    execSync(`ffmpeg -y -i ${inputAudio} -filter:a "atempo=1.5" -ar 48000 audio_fast_${i}.mp3`, { stdio: 'inherit' });
 
     // =========================
     // DURACIÓN
@@ -110,7 +110,7 @@ Format: Start,End,Style,Text
     // =========================
     execSync(`
 ffmpeg -y -loop 1 -i image_${i}.jpg -vf "
-fps=60,
+fps=30,
 scale=720:1280:force_original_aspect_ratio=decrease,
 pad=720:1280:(ow-iw)/2:(oh-ih)/2,
 zoompan=z='if(gt(on,12),1+0.002*(on-12),1)':d=300:s=720x1280,
@@ -145,7 +145,7 @@ file 'video_part_${i}.mp4'`);
     // FINAL
     // =========================
     execSync(`
-ffmpeg -y -i combined_${i}.mp4 -i audio_fast_${i}.mp3 -vf "ass=subs_${i}.ass" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -pix_fmt yuv420p -shortest output_${i}.mp4
+ffmpeg -y -i combined_${i}.mp4 -i audio_fast_${i}.mp3 -vf "ass=subs_${i}.ass,fps=30" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_${i}.mp4
 `, { stdio: 'inherit' });
 
     // =========================
