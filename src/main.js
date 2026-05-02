@@ -29,9 +29,9 @@ for (let i = 0; i < items.length; i++) {
 
     if (audioBase64) {
         console.log("Convirtiendo audioBase64 de Gemini TTS a MP3...");
-        const wavBuffer = Buffer.from(audioBase64, 'base64');
-        fs.writeFileSync(`audio_${i}.wav`, wavBuffer);
-        execSync(`ffmpeg -y -i audio_${i}.wav -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
+        const pcmBuffer = Buffer.from(audioBase64, 'base64');
+        fs.writeFileSync(`audio_${i}.pcm`, pcmBuffer);
+        execSync(`ffmpeg -y -f s16le -ar 24000 -ac 1 -i audio_${i}.pcm -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
     } else if (audioUrl) {
         let downloadUrl = audioUrl;
 
