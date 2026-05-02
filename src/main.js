@@ -10,6 +10,11 @@ const items = input.items || [];
 const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
+// =========================
+// ELIMINAR INPUT DEL STORE
+// =========================
+await store.deleteRecord('INPUT');
+
 for (let i = 0; i < items.length; i++) {
     const { imageUrl, videoUrl, audioUrl, audioBase64, text: rawText } = items[i];
     const text = (rawText || "").replace(/[\x00-\x1F\x7F]/g, " ").trim();
@@ -161,10 +166,5 @@ ffmpeg -y -i combined_${i}.mp4 -i audio_fast_${i}.mp3 -vf "ass=subs_${i}.ass,fps
 
     await Actor.pushData({ videoUrl: url });
 }
-
-// =========================
-// ELIMINAR INPUT DEL STORE
-// =========================
-await store.deleteRecord('INPUT');
 
 await Actor.exit();
