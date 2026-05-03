@@ -106,7 +106,7 @@ Format: Start,End,Style,Text
     fs.writeFileSync(`subs_${i}.ass`, ass);
 
     // =========================
-    // IMAGEN — 1s efecto VelasPerfectas + 4s estática
+    // IMAGEN — 1s efecto VelasPerfectas + 1s estática = 2s totales
     // =========================
 
     // 1s con efecto zoom out blur
@@ -122,17 +122,17 @@ setsar=1
 " -t 1 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p image_efx_${i}.mp4
 `, { stdio: 'inherit' });
 
-    // 4s imagen estática normal
+    // 1s imagen estática normal
     execSync(`
 ffmpeg -y -loop 1 -i image_${i}.jpg -vf "
 fps=30,
 scale=720:1280:force_original_aspect_ratio=decrease,
 pad=720:1280:(ow-iw)/2:(oh-ih)/2,
 setsar=1
-" -t 4 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p image_static_${i}.mp4
+" -t 1 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p image_static_${i}.mp4
 `, { stdio: 'inherit' });
 
-    // Unir efecto + estática = 5s totales
+    // Unir efecto + estática = 2s totales
     fs.writeFileSync(`list_img_${i}.txt`,
 `file 'image_efx_${i}.mp4'
 file 'image_static_${i}.mp4'`);
@@ -142,7 +142,7 @@ file 'image_static_${i}.mp4'`);
     // =========================
     // VIDEO
     // =========================
-    const remaining = Math.max(duration - 5, 1);
+    const remaining = Math.max(duration - 2, 1);
 
     execSync(`
 ffmpeg -y -i video_${i}.mp4 -vf "
