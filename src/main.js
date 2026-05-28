@@ -40,16 +40,12 @@ function getDirectUrl(url) {
 }
 
 // =========================
-// PASO 1: DESCARGAR CON CURL PRIMERO (solo 30s de datos)
-// Usamos range bytes para no descargar el archivo completo
-// Luego FFmpeg procesa el archivo local con threads limitados
+// PASO 1: DESCARGAR VIDEO COMPLETO
 // =========================
-console.log("Descargando video (primeros ~50MB)...");
+console.log("Descargando video...");
 const videoDirectUrl = getDirectUrl(videoUrl);
 console.log("URL:", videoDirectUrl);
-
-// Descargar solo los primeros 80MB (suficiente para 30s de video comprimido)
-execSync(`curl -L -r 0-83886080 "${videoDirectUrl}" -o input_raw.mp4 --max-time 120`, { stdio: 'inherit' });
+execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${videoDirectUrl}" -o input_raw.mp4 --max-time 3600`, { stdio: 'inherit' });
 
 const rawSize = fs.statSync('input_raw.mp4').size;
 console.log(`Descargado: ${(rawSize / 1024 / 1024).toFixed(2)} MB`);
@@ -57,13 +53,16 @@ if (rawSize < 10000) {
     throw new Error(`Error al descargar el video. Verifica que el link sea público.`);
 }
 
-// Procesar con threads limitados para reducir RAM, escalar a 480p primero
-execSync(`ffmpeg -y -threads 2 -t 30 -i input_raw.mp4 -vf "scale=854:480:force_original_aspect_ratio=decrease" -t 30 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
+// =========================
+// PASO 2: RECORTAR A 30s + ESCALAR A 480p EN UN SOLO PASO
+// -vf scale reduce RAM drasticamente antes de codificar
+// -threads 1 minimiza uso de memoria
+// =========================
+console.log("Recortando y escalando a 480p...");
+execSync(`ffmpeg -y -threads 1 -i input_raw.mp4 -t 30 -vf "scale=854:480:force_original_aspect_ratio=decrease,setsar=1" -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 1 video_cut.mp4`, { stdio: 'inherit' });
 
-// Eliminar archivo raw para liberar espacio
 execSync(`rm -f input_raw.mp4`);
 
-// Verificar
 const cutSize = fs.statSync('video_cut.mp4').size;
 console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
 if (cutSize < 10000) {
@@ -71,7 +70,7 @@ if (cutSize < 10000) {
 }
 
 // =========================
-// PASO 2: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
+// PASO 3: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
 // =========================
 const cutDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
