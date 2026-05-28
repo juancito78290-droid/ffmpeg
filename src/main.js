@@ -25,40 +25,40 @@ const colors = [
 const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
 // =========================
-// DESCARGAR VIDEO
+// OBTENER URL DIRECTA DE GOOGLE DRIVE
 // =========================
-console.log("Descargando video...");
-let downloadUrl = videoUrl;
-const driveMatch = videoUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-if (driveMatch) {
-    downloadUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${driveMatch[1]}`;
-} else if (videoUrl.includes('drive.google.com/uc')) {
-    downloadUrl = videoUrl;
-}
-execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${downloadUrl}" -o input_video.mp4`, { stdio: 'inherit' });
+function getDirectUrl(url) {
+    const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    let fileId = null;
+    if (match1) fileId = match1[1];
+    else if (match2) fileId = match2[1];
 
-// =========================
-// DURACIÓN ORIGINAL
-// =========================
-const originalDuration = parseFloat(
-    execSync(`ffprobe -i input_video.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
-        .toString().trim()
-);
-console.log("Duración original:", originalDuration);
-
-// =========================
-// PASO 1: RECORTAR A 30 SEGUNDOS SI DURA MÁS
-// =========================
-if (originalDuration > 30) {
-    console.log("Video largo, recortando a 30 segundos...");
-    execSync(`ffmpeg -y -i input_video.mp4 -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
-} else {
-    console.log("Video de 30s o menos, copiando sin recorte...");
-    execSync(`ffmpeg -y -i input_video.mp4 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
+    if (fileId) {
+        return `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+    }
+    return url;
 }
 
 // =========================
-// PASO 2: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
+// DESCARGAR Y RECORTAR EN UN SOLO PASO (sin guardar video completo)
+// =========================
+console.log("Descargando y recortando video en un solo paso...");
+const videoDirectUrl = getDirectUrl(videoUrl);
+console.log("URL:", videoDirectUrl);
+
+// FFmpeg lee el stream directamente desde curl sin guardar el archivo completo
+execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${videoDirectUrl}" --max-time 3600 | ffmpeg -y -i pipe:0 -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: ['inherit', 'inherit', 'inherit'], shell: true });
+
+// Verificar que se generó correctamente
+const cutSize = fs.statSync('video_cut.mp4').size;
+console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
+if (cutSize < 10000) {
+    throw new Error(`Error al descargar/recortar el video. Verifica que el link de Google Drive sea público.`);
+}
+
+// =========================
+// LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
 // =========================
 const cutDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
@@ -73,7 +73,7 @@ if (cutDuration < 10) {
 }
 
 // =========================
-// DURACIÓN FINAL DEL VIDEO
+// DURACIÓN FINAL
 // =========================
 const finalDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
@@ -83,8 +83,6 @@ console.log("Duración final:", finalDuration);
 
 // =========================
 // ESCALAR A FORMATO VERTICAL 9:16 (720x1280)
-// Video ocupa la parte central, barras negras arriba y abajo
-// Texto va en la barra negra superior
 // =========================
 execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
 
@@ -113,28 +111,18 @@ fs.writeFileSync('subs.ass', ass);
 // DESCARGAR MÚSICA DE FONDO
 // =========================
 console.log("Descargando música de fondo...");
-let musicDownloadUrl = musicUrl;
-const musicDriveMatch = musicUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-if (musicDriveMatch) {
-    musicDownloadUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${musicDriveMatch[1]}`;
-} else if (musicUrl.includes('drive.google.com/uc')) {
-    musicDownloadUrl = musicUrl;
-}
-execSync(`curl -L -c /tmp/cookies_music.txt -b /tmp/cookies_music.txt "${musicDownloadUrl}" -o music.mp3`, { stdio: 'inherit' });
+const musicDirectUrl = getDirectUrl(musicUrl);
+execSync(`curl -L "${musicDirectUrl}" -o music.mp3 --max-time 120`, { stdio: 'inherit' });
 
 // =========================
-// EXTRAER AUDIO ORIGINAL
+// EXTRAER AUDIO ORIGINAL + MEZCLAR
 // =========================
 execSync(`ffmpeg -y -i video_cut.mp4 -vn -c:a aac -b:a 128k -ar 48000 original_audio.aac`, { stdio: 'inherit' });
-
-// Loop música de fondo y bajar volumen al 35%
 execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.35" -c:a aac -b:a 128k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
-
-// Mezclar audio original 100% + música 35%
 execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.35[aout]" -map "[aout]" -c:a aac -b:a 128k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
 
 // =========================
-// VIDEO FINAL — texto + audio mezclado
+// VIDEO FINAL
 // =========================
 console.log("Generando video final...");
 execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset superfast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
@@ -153,6 +141,6 @@ await Actor.pushData({ videoUrl: url });
 // =========================
 // LIMPIEZA
 // =========================
-execSync(`rm -f input_video.mp4 video_cut.mp4 video_formatted.mp4 original_audio.aac music.mp3 music_loop.aac mixed_audio.aac subs.ass output_final.mp4`);
+execSync(`rm -f video_cut.mp4 video_formatted.mp4 original_audio.aac music.mp3 music_loop.aac mixed_audio.aac subs.ass output_final.mp4`);
 
 await Actor.exit();
