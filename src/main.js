@@ -54,12 +54,11 @@ if (rawSize < 10000) {
 }
 
 // =========================
-// PASO 2: RECORTAR A 30s + ESCALAR A 480p EN UN SOLO PASO
-// -vf scale reduce RAM drasticamente antes de codificar
-// -threads 1 minimiza uso de memoria
+// PASO 2: RECORTAR A 30s + ESCALAR A 480p
+// Ancho calculado con trunc para garantizar número par
 // =========================
 console.log("Recortando y escalando a 480p...");
-execSync(`ffmpeg -y -threads 1 -i input_raw.mp4 -t 30 -vf "scale=854:480:force_original_aspect_ratio=decrease,setsar=1" -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 1 video_cut.mp4`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -threads 1 -i input_raw.mp4 -t 30 -vf "scale=trunc(iw*480/ih/2)*2:480,setsar=1" -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 1 video_cut.mp4`, { stdio: 'inherit' });
 
 execSync(`rm -f input_raw.mp4`);
 
