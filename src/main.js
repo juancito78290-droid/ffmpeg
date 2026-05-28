@@ -40,20 +40,34 @@ function getDirectUrl(url) {
 }
 
 // =========================
-// PASO 1: DESCARGAR, ESCALAR A 720p Y RECORTAR EN UN SOLO PASO
-// Escalar durante la descarga evita el Out of Memory con videos 4K
+// PASO 1: DESCARGAR CON CURL PRIMERO (solo 30s de datos)
+// Usamos range bytes para no descargar el archivo completo
+// Luego FFmpeg procesa el archivo local con threads limitados
 // =========================
-console.log("Descargando, escalando y recortando video...");
+console.log("Descargando video (primeros ~50MB)...");
 const videoDirectUrl = getDirectUrl(videoUrl);
 console.log("URL:", videoDirectUrl);
 
-execSync(`ffmpeg -y -t 30 -i "${videoDirectUrl}" -vf "scale=1280:720:force_original_aspect_ratio=decrease" -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p -c:a aac -b:a 128k video_cut.mp4`, { stdio: 'inherit' });
+// Descargar solo los primeros 80MB (suficiente para 30s de video comprimido)
+execSync(`curl -L -r 0-83886080 "${videoDirectUrl}" -o input_raw.mp4 --max-time 120`, { stdio: 'inherit' });
+
+const rawSize = fs.statSync('input_raw.mp4').size;
+console.log(`Descargado: ${(rawSize / 1024 / 1024).toFixed(2)} MB`);
+if (rawSize < 10000) {
+    throw new Error(`Error al descargar el video. Verifica que el link sea público.`);
+}
+
+// Procesar con threads limitados para reducir RAM, escalar a 480p primero
+execSync(`ffmpeg -y -threads 2 -t 30 -i input_raw.mp4 -vf "scale=854:480:force_original_aspect_ratio=decrease" -t 30 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
+
+// Eliminar archivo raw para liberar espacio
+execSync(`rm -f input_raw.mp4`);
 
 // Verificar
 const cutSize = fs.statSync('video_cut.mp4').size;
 console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
 if (cutSize < 10000) {
-    throw new Error(`Error al descargar el video. Verifica que el link sea público.`);
+    throw new Error(`Error al procesar el video.`);
 }
 
 // =========================
@@ -67,7 +81,7 @@ console.log("Duración tras recorte:", cutDuration);
 
 if (cutDuration < 10) {
     console.log(`Video corto (${cutDuration}s), aplicando loop x3...`);
-    execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
+    execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
     execSync(`mv video_looped.mp4 video_cut.mp4`);
 }
 
@@ -83,7 +97,7 @@ console.log("Duración final:", finalDuration);
 // =========================
 // ESCALAR A FORMATO VERTICAL 9:16 (720x1280)
 // =========================
-execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
 
 // =========================
 // TEXTO SUPERIOR CON COLOR ALEATORIO
@@ -124,7 +138,7 @@ execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:
 // VIDEO FINAL
 // =========================
 console.log("Generando video final...");
-execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset superfast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset ultrafast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
 
 // =========================
 // GUARDAR Y DEVOLVER URL
@@ -143,4 +157,3 @@ await Actor.pushData({ videoUrl: url });
 execSync(`rm -f video_cut.mp4 video_formatted.mp4 original_audio.aac music.mp3 music_loop.aac mixed_audio.aac subs.ass output_final.mp4`);
 
 await Actor.exit();
-    
