@@ -40,6 +40,18 @@ function getDirectUrl(url) {
 }
 
 // =========================
+// LIMPIAR TEXTO — eliminar emojis y caracteres raros
+// =========================
+function stripEmojis(str) {
+    return str
+        .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+        .replace(/[\u{2600}-\u{27BF}]/gu, '')
+        .replace(/[\u{FE00}-\u{FEFF}]/gu, '')
+        .replace(/[\x00-\x1F\x7F]/g, ' ')
+        .trim();
+}
+
+// =========================
 // PASO 1: DESCARGAR VIDEO COMPLETO
 // =========================
 console.log("Descargando video...");
@@ -54,11 +66,11 @@ if (rawSize < 10000) {
 }
 
 // =========================
-// PASO 2: RECORTAR A 30s + ESCALAR A 480p
-// Ancho calculado con trunc para garantizar número par
+// PASO 2: RECORTAR A 30s + ESCALAR A 720p
+// Scale temprano = decodifica menos datos = más rápido y barato
 // =========================
-console.log("Recortando y escalando a 480p...");
-execSync(`ffmpeg -y -threads 1 -i input_raw.mp4 -t 30 -vf "scale=trunc(iw*480/ih/2)*2:480,setsar=1" -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 1 video_cut.mp4`, { stdio: 'inherit' });
+console.log("Recortando y escalando a 720p...");
+execSync(`ffmpeg -y -threads 2 -i input_raw.mp4 -t 30 -vf "scale=trunc(iw*720/ih/2)*2:720,setsar=1" -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p -c:a aac -b:a 96k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
 
 execSync(`rm -f input_raw.mp4`);
 
@@ -79,7 +91,7 @@ console.log("Duración tras recorte:", cutDuration);
 
 if (cutDuration < 10) {
     console.log(`Video corto (${cutDuration}s), aplicando loop x3...`);
-    execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
+    execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
     execSync(`mv video_looped.mp4 video_cut.mp4`);
 }
 
@@ -98,9 +110,9 @@ console.log("Duración final:", finalDuration);
 execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
 
 // =========================
-// TEXTO SUPERIOR CON COLOR ALEATORIO
+// TEXTO SUPERIOR — SIN EMOJIS
 // =========================
-const safeText = (text || "").replace(/[\x00-\x1F\x7F]/g, " ").trim();
+const safeText = stripEmojis(text || "");
 
 const ass = `[Script Info]
 ScriptType: v4.00+
@@ -127,16 +139,17 @@ execSync(`curl -L "${musicDirectUrl}" -o music.mp3 --max-time 120`, { stdio: 'in
 
 // =========================
 // EXTRAER AUDIO ORIGINAL + MEZCLAR
+// Original: 100% | Música de fondo: 20%
 // =========================
-execSync(`ffmpeg -y -i video_cut.mp4 -vn -c:a aac -b:a 128k -ar 48000 original_audio.aac`, { stdio: 'inherit' });
-execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.35" -c:a aac -b:a 128k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
-execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.35[aout]" -map "[aout]" -c:a aac -b:a 128k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i video_cut.mp4 -vn -c:a aac -b:a 96k -ar 48000 original_audio.aac`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.20" -c:a aac -b:a 96k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.20[aout]" -map "[aout]" -c:a aac -b:a 96k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
 
 // =========================
 // VIDEO FINAL
 // =========================
 console.log("Generando video final...");
-execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset ultrafast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset ultrafast -crf 28 -maxrate 4M -bufsize 8M -pix_fmt yuv420p -c:a aac -b:a 96k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
 
 // =========================
 // GUARDAR Y DEVOLVER URL
