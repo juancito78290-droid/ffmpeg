@@ -1,8 +1,8 @@
 FROM node:18-bullseye-slim
 
-# Instalar ffmpeg y fuentes
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    curl \
     fonts-dejavu-core \
     fonts-freefont-ttf \
     && fc-cache -fv \
