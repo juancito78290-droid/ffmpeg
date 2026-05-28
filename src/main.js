@@ -40,20 +40,20 @@ function getDirectUrl(url) {
 }
 
 // =========================
-// PASO 1: DESCARGAR SOLO 30 SEGUNDOS CON FFMPEG DIRECTO
-// FFmpeg descarga solo lo necesario desde la URL directamente
+// PASO 1: DESCARGAR, ESCALAR A 720p Y RECORTAR EN UN SOLO PASO
+// Escalar durante la descarga evita el Out of Memory con videos 4K
 // =========================
-console.log("Descargando primeros 30 segundos del video...");
+console.log("Descargando, escalando y recortando video...");
 const videoDirectUrl = getDirectUrl(videoUrl);
 console.log("URL:", videoDirectUrl);
 
-execSync(`ffmpeg -y -t 30 -i "${videoDirectUrl}" -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -t 30 -i "${videoDirectUrl}" -vf "scale=1280:720:force_original_aspect_ratio=decrease" -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p -c:a aac -b:a 128k video_cut.mp4`, { stdio: 'inherit' });
 
-// Verificar que se generó correctamente
+// Verificar
 const cutSize = fs.statSync('video_cut.mp4').size;
 console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
 if (cutSize < 10000) {
-    throw new Error(`Error al descargar el video. Verifica que el link de Google Drive sea público.`);
+    throw new Error(`Error al descargar el video. Verifica que el link sea público.`);
 }
 
 // =========================
@@ -143,3 +143,4 @@ await Actor.pushData({ videoUrl: url });
 execSync(`rm -f video_cut.mp4 video_formatted.mp4 original_audio.aac music.mp3 music_loop.aac mixed_audio.aac subs.ass output_final.mp4`);
 
 await Actor.exit();
+    
