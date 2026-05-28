@@ -40,10 +40,10 @@ function getDirectUrl(url) {
 }
 
 // =========================
-// LIMPIAR TEXTO — eliminar emojis y caracteres raros
+// LIMPIAR TEXTO — solo caracteres básicos, sin emojis
 // =========================
-function stripEmojis(str) {
-    return str
+function cleanText(str) {
+    return (str || '')
         .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
         .replace(/[\u{2600}-\u{27BF}]/gu, '')
         .replace(/[\u{FE00}-\u{FEFF}]/gu, '')
@@ -52,36 +52,24 @@ function stripEmojis(str) {
 }
 
 // =========================
-// PASO 1: DESCARGAR VIDEO COMPLETO
+// PASO 1: PROCESAR EN STREAMING DIRECTO
+// ffmpeg lee la URL sin guardar el 4K en disco
+// Para a los 30s — nunca descarga el archivo completo
 // =========================
-console.log("Descargando video...");
+console.log("Procesando video en streaming...");
 const videoDirectUrl = getDirectUrl(videoUrl);
 console.log("URL:", videoDirectUrl);
-execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${videoDirectUrl}" -o input_raw.mp4 --max-time 3600`, { stdio: 'inherit' });
 
-const rawSize = fs.statSync('input_raw.mp4').size;
-console.log(`Descargado: ${(rawSize / 1024 / 1024).toFixed(2)} MB`);
-if (rawSize < 10000) {
-    throw new Error(`Error al descargar el video. Verifica que el link sea público.`);
-}
-
-// =========================
-// PASO 2: RECORTAR A 30s + ESCALAR A 720p
-// Scale temprano = decodifica menos datos = más rápido y barato
-// =========================
-console.log("Recortando y escalando a 720p...");
-execSync(`ffmpeg -y -threads 2 -i input_raw.mp4 -t 30 -vf "scale=trunc(iw*720/ih/2)*2:720,setsar=1" -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p -c:a aac -b:a 96k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
-
-execSync(`rm -f input_raw.mp4`);
+execSync(`ffmpeg -y -threads 2 -ss 0 -t 30 -i "${videoDirectUrl}" -vf "scale=trunc(iw*720/ih/2)*2:720,setsar=1" -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p -c:a aac -b:a 96k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
 
 const cutSize = fs.statSync('video_cut.mp4').size;
-console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
+console.log(`Video procesado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
 if (cutSize < 10000) {
-    throw new Error(`Error al procesar el video.`);
+    throw new Error(`Error al procesar el video. Verifica que el link sea público.`);
 }
 
 // =========================
-// PASO 3: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
+// PASO 2: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
 // =========================
 const cutDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
@@ -110,9 +98,9 @@ console.log("Duración final:", finalDuration);
 execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
 
 // =========================
-// TEXTO SUPERIOR — SIN EMOJIS
+// TEXTO SUPERIOR CON COLOR ALEATORIO
 // =========================
-const safeText = stripEmojis(text || "");
+const safeText = cleanText(text);
 
 const ass = `[Script Info]
 ScriptType: v4.00+
@@ -139,11 +127,11 @@ execSync(`curl -L "${musicDirectUrl}" -o music.mp3 --max-time 120`, { stdio: 'in
 
 // =========================
 // EXTRAER AUDIO ORIGINAL + MEZCLAR
-// Original: 100% | Música de fondo: 20%
+// Original: weights=2 | Música: volume=0.50 weights=1
 // =========================
 execSync(`ffmpeg -y -i video_cut.mp4 -vn -c:a aac -b:a 96k -ar 48000 original_audio.aac`, { stdio: 'inherit' });
-execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.20" -c:a aac -b:a 96k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
-execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.20[aout]" -map "[aout]" -c:a aac -b:a 96k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.50" -c:a aac -b:a 96k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
+execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=2 1[aout]" -map "[aout]" -c:a aac -b:a 96k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
 
 // =========================
 // VIDEO FINAL
