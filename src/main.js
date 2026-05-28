@@ -5,155 +5,154 @@ import fs from 'fs';
 await Actor.init();
 
 const input = await Actor.getInput();
-const items = input.items || [];
+const { videoUrl, text, musicUrl } = input;
 
 const store = await Actor.openKeyValueStore();
 const storeId = store.id;
 
-function rand(min, max) {
-    return (Math.random() * (max - min) + min).toFixed(3);
+// =========================
+// COLORES ALEATORIOS LEGIBLES
+// =========================
+const colors = [
+    '&H0000FFFF',  // Amarillo
+    '&H00FFFFFF',  // Blanco
+    '&H000000FF',  // Rojo
+    '&H00FF0000',  // Azul
+    '&H0000FF00',  // Verde lima
+    '&H00FF00FF',  // Magenta
+    '&H0080FF00',  // Verde brillante
+];
+const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+// =========================
+// DESCARGAR VIDEO
+// =========================
+console.log("Descargando video...");
+let downloadUrl = videoUrl;
+const driveMatch = videoUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+if (driveMatch) {
+    downloadUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${driveMatch[1]}`;
+} else if (videoUrl.includes('drive.google.com/uc')) {
+    downloadUrl = videoUrl;
+}
+execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${downloadUrl}" -o input_video.mp4`, { stdio: 'inherit' });
+
+// =========================
+// DURACIÓN ORIGINAL
+// =========================
+const originalDuration = parseFloat(
+    execSync(`ffprobe -i input_video.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
+        .toString().trim()
+);
+console.log("Duración original:", originalDuration);
+
+// =========================
+// PASO 1: RECORTAR A 30 SEGUNDOS SI DURA MÁS
+// =========================
+if (originalDuration > 30) {
+    console.log("Video largo, recortando a 30 segundos...");
+    execSync(`ffmpeg -y -i input_video.mp4 -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
+} else {
+    console.log("Video de 30s o menos, copiando sin recorte...");
+    execSync(`ffmpeg -y -i input_video.mp4 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
 }
 
-for (let i = 0; i < items.length; i++) {
-    const { videoUrl, audioUrl, audioBase64, text: rawText } = items[i];
-    const text = (rawText || "").replace(/[\x00-\x1F\x7F]/g, " ").trim();
+// =========================
+// PASO 2: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
+// =========================
+const cutDuration = parseFloat(
+    execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
+        .toString().trim()
+);
+console.log("Duración tras recorte:", cutDuration);
 
-    console.log(`\n=== ITEM ${i} ===`);
+if (cutDuration < 10) {
+    console.log(`Video corto (${cutDuration}s), aplicando loop x3...`);
+    execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
+    execSync(`mv video_looped.mp4 video_cut.mp4`);
+}
 
-    // =========================
-    // TRANSFORMACIONES ALEATORIAS
-    // =========================
-    const doMirror = Math.random() > 0.5;                      // 50% chance de mirror
-    const speed = parseFloat(rand(1.3, 1.5));                  // velocidad video aleatoria
-    const cropFactor = parseFloat(rand(0.92, 0.97));           // crop aleatorio entre 3% y 8%
-    const brightness = parseFloat(rand(-0.05, 0.08));          // brillo aleatorio
-    const contrast = parseFloat(rand(1.05, 1.20));             // contraste aleatorio
-    const saturation = parseFloat(rand(1.05, 1.35));           // saturacion aleatoria
-    const audioTempo = 1.3;                                    // audio siempre a 1.3x
+// =========================
+// DURACIÓN FINAL DEL VIDEO
+// =========================
+const finalDuration = parseFloat(
+    execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
+        .toString().trim()
+);
+console.log("Duración final:", finalDuration);
 
-    console.log(`Mirror: ${doMirror}, Speed: ${speed}, Crop: ${cropFactor}`);
-    console.log(`Brightness: ${brightness}, Contrast: ${contrast}, Saturation: ${saturation}`);
-    console.log(`Audio tempo: ${audioTempo} (fijo)`);
+// =========================
+// ESCALAR A FORMATO VERTICAL 9:16 (720x1280)
+// Video ocupa la parte central, barras negras arriba y abajo
+// Texto va en la barra negra superior
+// =========================
+execSync(`ffmpeg -y -i video_cut.mp4 -vf "scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,pad=720:1280:0:280:black,setsar=1" -an -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_formatted.mp4`, { stdio: 'inherit' });
 
-    // =========================
-    // DESCARGAR MEDIA
-    // =========================
-    execSync(`curl -L "${videoUrl}" -o video_${i}.mp4`, { stdio: 'inherit' });
+// =========================
+// TEXTO SUPERIOR CON COLOR ALEATORIO
+// =========================
+const safeText = (text || "").replace(/[\x00-\x1F\x7F]/g, " ").trim();
 
-    // =========================
-    // AUDIO DESDE BASE64 (Gemini TTS), URL MP3 o Google Drive
-    // =========================
-    let inputAudio = `audio_${i}.mp3`;
-
-    if (audioBase64) {
-        console.log("Convirtiendo audioBase64 de Gemini TTS a MP3...");
-        const pcmBuffer = Buffer.from(audioBase64, 'base64');
-        fs.writeFileSync(`audio_${i}.pcm`, pcmBuffer);
-        execSync(`ffmpeg -y -f s16le -ar 24000 -ac 1 -i audio_${i}.pcm -codec:a libmp3lame -qscale:a 2 ${inputAudio}`, { stdio: 'inherit' });
-    } else if (audioUrl) {
-        let downloadUrl = audioUrl;
-        const driveMatch = audioUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-        if (driveMatch) {
-            const fileId = driveMatch[1];
-            downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-            console.log("Google Drive detectado, descargando con ID:", fileId);
-        } else {
-            console.log("Descargando audio MP3 desde URL...");
-        }
-        execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${downloadUrl}" -o ${inputAudio}`, { stdio: 'inherit' });
-    } else {
-        throw new Error("Debes enviar audioBase64 o audioUrl");
-    }
-
-    // =========================
-    // PROCESAR AUDIO — tempo fijo 1.5x
-    // =========================
-    execSync(`ffmpeg -y -i ${inputAudio} -filter:a "atempo=${audioTempo}" -ar 48000 audio_fast_${i}.mp3`, { stdio: 'inherit' });
-
-    // =========================
-    // DURACION
-    // =========================
-    const duration = parseFloat(
-        execSync(`ffprobe -i audio_fast_${i}.mp3 -show_entries format=duration -v quiet -of csv="p=0"`)
-            .toString().trim()
-    );
-    console.log("Duracion:", duration);
-
-    // =========================
-    // SUBTITULOS
-    // =========================
-    const words = (text || "").toUpperCase().split(" ");
-    const chunkSize = 2;
-    const parts = [];
-
-    for (let j = 0; j < words.length; j += chunkSize) {
-        parts.push(words.slice(j, j + chunkSize).join(" "));
-    }
-
-    let ass = `[Script Info]
+const ass = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Bold
-Style: Default,DejaVu Sans,48,&H0000FFFF,&H00000000,&H00000000,1,3,0,2,20,20,240,1
+Style: Default,DejaVu Sans,46,${randomColor},&H00000000,&H00000000,1,3,1,8,30,30,20,1
 
 [Events]
 Format: Start,End,Style,Text
+Dialogue: 0:00:00.00,0:${String(Math.floor(finalDuration / 60)).padStart(2,'0')}:${(finalDuration % 60).toFixed(2).padStart(5,'0')},Default,${safeText}
 `;
 
-    function formatTime(sec) {
-        const m = Math.floor(sec / 60);
-        const s = (sec % 60).toFixed(2);
-        return `0:${String(m).padStart(2,'0')}:${String(s).padStart(5,'0')}`;
-    }
+fs.writeFileSync('subs.ass', ass);
 
-    const partDuration = duration / parts.length;
-    parts.forEach((p, idx) => {
-        const start = idx * partDuration;
-        const end = start + partDuration;
-        ass += `Dialogue: ${formatTime(start)},${formatTime(end)},Default,${p}\n`;
-    });
-
-    fs.writeFileSync(`subs_${i}.ass`, ass);
-
-    // =========================
-    // PRE-PROCESAR VIDEO — escalar a 720p y limitar a 30 segundos
-    // =========================
-    execSync(`ffmpeg -y -i video_${i}.mp4 -vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1" -t 30 -an -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_pre_${i}.mp4`, { stdio: 'inherit' });
-
-    // =========================
-    // VIDEO — transformaciones anti-deteccion
-    // =========================
-    const remaining = Math.max(duration, 1);
-    const mirrorFilter = doMirror ? 'hflip,' : '';
-    const videoFilter = `setpts=PTS/${speed},${mirrorFilter}crop=iw*${cropFactor}:ih*${cropFactor}:(iw-iw*${cropFactor})/2:(ih-ih*${cropFactor})/2,eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation},scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1`;
-
-    // Loop del video si es mas corto que el audio
-    execSync(`ffmpeg -y -stream_loop -1 -i video_pre_${i}.mp4 -vf "${videoFilter}" -t ${remaining} -an -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_part_${i}.mp4`, { stdio: 'inherit' });
-
-    // =========================
-    // FINAL — audio + subtitulos
-    // =========================
-    execSync(`ffmpeg -y -i video_part_${i}.mp4 -i audio_fast_${i}.mp3 -vf "ass=subs_${i}.ass,fps=30" -t ${duration} -c:v libx264 -preset superfast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_${i}.mp4`, { stdio: 'inherit' });
-
-    // =========================
-    // GUARDAR
-    // =========================
-    const key = `output-${Date.now()}-${i}.mp4`;
-    const bufferOut = fs.readFileSync(`output_${i}.mp4`);
-    await Actor.setValue(key, bufferOut, { contentType: 'video/mp4' });
-
-    const url = `https://api.apify.com/v2/key-value-stores/${storeId}/records/${key}`;
-    console.log("VIDEO LISTO:", url);
-    await Actor.pushData({ videoUrl: url });
-
-    // =========================
-    // LIMPIEZA
-    // =========================
-    execSync(`rm -f video_${i}.mp4 video_pre_${i}.mp4 audio_${i}.mp3 audio_${i}.pcm audio_fast_${i}.mp3 video_part_${i}.mp4 subs_${i}.ass output_${i}.mp4`);
+// =========================
+// DESCARGAR MÚSICA DE FONDO
+// =========================
+console.log("Descargando música de fondo...");
+let musicDownloadUrl = musicUrl;
+const musicDriveMatch = musicUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+if (musicDriveMatch) {
+    musicDownloadUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${musicDriveMatch[1]}`;
+} else if (musicUrl.includes('drive.google.com/uc')) {
+    musicDownloadUrl = musicUrl;
 }
+execSync(`curl -L -c /tmp/cookies_music.txt -b /tmp/cookies_music.txt "${musicDownloadUrl}" -o music.mp3`, { stdio: 'inherit' });
+
+// =========================
+// EXTRAER AUDIO ORIGINAL
+// =========================
+execSync(`ffmpeg -y -i video_cut.mp4 -vn -c:a aac -b:a 128k -ar 48000 original_audio.aac`, { stdio: 'inherit' });
+
+// Loop música de fondo y bajar volumen al 35%
+execSync(`ffmpeg -y -stream_loop -1 -i music.mp3 -t ${finalDuration} -af "volume=0.35" -c:a aac -b:a 128k -ar 48000 music_loop.aac`, { stdio: 'inherit' });
+
+// Mezclar audio original 100% + música 35%
+execSync(`ffmpeg -y -i original_audio.aac -i music_loop.aac -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.35[aout]" -map "[aout]" -c:a aac -b:a 128k -ar 48000 mixed_audio.aac`, { stdio: 'inherit' });
+
+// =========================
+// VIDEO FINAL — texto + audio mezclado
+// =========================
+console.log("Generando video final...");
+execSync(`ffmpeg -y -i video_formatted.mp4 -i mixed_audio.aac -vf "ass=subs.ass,fps=30" -t ${finalDuration} -c:v libx264 -preset superfast -crf 28 -maxrate 5M -bufsize 10M -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -movflags +faststart -shortest output_final.mp4`, { stdio: 'inherit' });
+
+// =========================
+// GUARDAR Y DEVOLVER URL
+// =========================
+const key = `output-${Date.now()}.mp4`;
+const buffer = fs.readFileSync('output_final.mp4');
+await Actor.setValue(key, buffer, { contentType: 'video/mp4' });
+
+const url = `https://api.apify.com/v2/key-value-stores/${storeId}/records/${key}`;
+console.log("VIDEO LISTO:", url);
+await Actor.pushData({ videoUrl: url });
+
+// =========================
+// LIMPIEZA
+// =========================
+execSync(`rm -f input_video.mp4 video_cut.mp4 video_formatted.mp4 original_audio.aac music.mp3 music_loop.aac mixed_audio.aac subs.ass output_final.mp4`);
 
 await Actor.exit();
-                
