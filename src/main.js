@@ -33,7 +33,6 @@ function getDirectUrl(url) {
     let fileId = null;
     if (match1) fileId = match1[1];
     else if (match2) fileId = match2[1];
-
     if (fileId) {
         return `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
     }
@@ -41,24 +40,24 @@ function getDirectUrl(url) {
 }
 
 // =========================
-// DESCARGAR Y RECORTAR EN UN SOLO PASO (sin guardar video completo)
+// PASO 1: DESCARGAR SOLO 30 SEGUNDOS CON FFMPEG DIRECTO
+// FFmpeg descarga solo lo necesario desde la URL directamente
 // =========================
-console.log("Descargando y recortando video en un solo paso...");
+console.log("Descargando primeros 30 segundos del video...");
 const videoDirectUrl = getDirectUrl(videoUrl);
 console.log("URL:", videoDirectUrl);
 
-// FFmpeg lee el stream directamente desde curl sin guardar el archivo completo
-execSync(`curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt "${videoDirectUrl}" --max-time 3600 | ffmpeg -y -i pipe:0 -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: ['inherit', 'inherit', 'inherit'], shell: true });
+execSync(`ffmpeg -y -t 30 -i "${videoDirectUrl}" -t 30 -c:v libx264 -preset superfast -crf 28 -pix_fmt yuv420p video_cut.mp4`, { stdio: 'inherit' });
 
 // Verificar que se generó correctamente
 const cutSize = fs.statSync('video_cut.mp4').size;
 console.log(`Video recortado: ${(cutSize / 1024 / 1024).toFixed(2)} MB`);
 if (cutSize < 10000) {
-    throw new Error(`Error al descargar/recortar el video. Verifica que el link de Google Drive sea público.`);
+    throw new Error(`Error al descargar el video. Verifica que el link de Google Drive sea público.`);
 }
 
 // =========================
-// LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
+// PASO 2: LOOP x3 SI DURA MENOS DE 10 SEGUNDOS
 // =========================
 const cutDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`)
