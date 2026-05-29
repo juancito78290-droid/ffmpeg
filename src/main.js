@@ -33,18 +33,19 @@ function cleanText(str) {
 
 // =========================
 // LAYOUT 1:1 — 720x720
+// Texto arriba, video abajo
 // =========================
 const canvasW    = 720;
 const canvasH    = 720;
-const topBarH    = 70;
-const videoSize  = 460;
-const fontSize   = 46;
+const fontSize   = 36;
 const lineHeight = fontSize * 1.35;
 const marginH    = 40;
 const padV       = 24;
+const videoSize  = 460; // video cuadrado
 
 const safeText = cleanText(text);
 
+// Calcular líneas del texto
 const charsPerLine = Math.floor((canvasW - marginH * 2) / (fontSize * 0.55));
 const words = safeText.split(' ');
 let lines = 1;
@@ -58,7 +59,11 @@ for (const word of words) {
     }
 }
 
-const botBarH = Math.ceil(lines * lineHeight + padV * 2);
+// Barra negra superior adaptativa según líneas del texto
+const topBarH = Math.ceil(lines * lineHeight + padV * 2);
+// Barra negra inferior fija pequeña
+const botBarH = 70;
+
 const totalH = topBarH + videoSize + botBarH;
 let finalVideoSize = videoSize;
 if (totalH > canvasH) {
@@ -85,9 +90,7 @@ try {
 console.log("Duración original:", originalDuration, "segundos");
 
 // =========================
-// PASO 2: DESCARGAR A 720p — con o sin recorte según duración
-// scale=720:-2 escala a 720p EN TIEMPO REAL durante la descarga
-// Nunca procesa 4K en RAM
+// PASO 2: DESCARGAR A 720p
 // Si dura más de 30s: descarga+escala+recorta simultáneamente
 // Si dura 30s o menos: descarga+escala completo
 // =========================
@@ -95,7 +98,7 @@ if (originalDuration > 30) {
     console.log("Video largo, descargando, escalando a 720p y recortando a 30s...");
     execSync(`ffmpeg -y -threads 2 -t 30 -i "${videoDirectUrl}" -vf "scale=720:-2" -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
 } else {
-    console.log("Video corto (<=30s), descargando y escalando a 720p completo...");
+    console.log("Video corto (<=30s), descargando y escalando a 720p...");
     execSync(`ffmpeg -y -threads 2 -i "${videoDirectUrl}" -vf "scale=720:-2" -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p -c:a aac -b:a 128k -threads 2 video_cut.mp4`, { stdio: 'inherit' });
 }
 
@@ -108,10 +111,7 @@ if (cutSize < 10000) throw new Error(`Error al procesar el video. Verifica que e
 const cutDuration = parseFloat(
     execSync(`ffprobe -i video_cut.mp4 -show_entries format=duration -v quiet -of csv="p=0"`).toString().trim()
 );
-console.log("Duración tras descarga:", cutDuration);
-
 if (cutDuration < 10) {
-    console.log(`Video corto (${cutDuration}s), aplicando loop x3...`);
     execSync(`ffmpeg -y -stream_loop 2 -i video_cut.mp4 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p video_looped.mp4`, { stdio: 'inherit' });
     execSync(`mv video_looped.mp4 video_cut.mp4`);
 }
@@ -122,7 +122,9 @@ const finalDuration = parseFloat(
 console.log("Duración final:", finalDuration);
 
 // =========================
-// PASO 4: FORMATEAR A 1:1 720x720 + FADE IN
+// PASO 4: FORMATEAR A 1:1 720x720
+// Video cuadrado centrado justo debajo del texto
+// Fade in 0.5s
 // =========================
 const videoOffsetY = topBarH;
 execSync(
@@ -131,9 +133,11 @@ execSync(
 );
 
 // =========================
-// PASO 5: TEXTO EN BARRA NEGRA INFERIOR
+// PASO 5: TEXTO EN BARRA NEGRA SUPERIOR
+// Alignment=8 = arriba centrado
+// MarginV = padding desde arriba
 // =========================
-const textMarginV = Math.floor(padV + (botBarH - lines * lineHeight) / 2);
+const textMarginV = Math.floor(padV);
 const endTime = `0:${String(Math.floor(finalDuration / 60)).padStart(2,'0')}:${(finalDuration % 60).toFixed(2).padStart(5,'0')}`;
 
 const ass = `[Script Info]
@@ -144,7 +148,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Bold
-Style: Default,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H00000000,1,3,1,2,${marginH},${marginH},${textMarginV},1
+Style: Default,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H00000000,1,3,1,8,${marginH},${marginH},${textMarginV},1
 
 [Events]
 Format: Start,End,Style,Text
